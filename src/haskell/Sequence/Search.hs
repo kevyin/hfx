@@ -30,6 +30,7 @@ import Sequence.Match
 import Sequence.Fragment
 import Sequence.Location
 import Sequence.IonSeries
+import Util.Misc
 
 import Data.Word
 import Data.Maybe
@@ -39,6 +40,7 @@ import Prelude                                  hiding (lookup)
 
 import Foreign.CUDA (DevicePtr)
 import qualified Data.Vector.Generic            as G
+import qualified Data.Vector.Unboxed            as U
 import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
 import qualified Foreign.CUDA.Algorithms        as CUDA
@@ -57,15 +59,18 @@ type IonSeries  = DevicePtr Word32
 --
 searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
 searchForMatches cp sdb ddb ms2 =
-  findCandidates cp ddb ms2                                  $ \candidates ->
-  mkSpecXCorr ddb candidates (ms2charge ms2) (G.length spec) $ \specThry   ->
-  mapMaybe finish `fmap` sequestXC cp candidates spec specThry
+  filterCandidateByMass cp ddb mass                                   $ \candidatesByMass ->
+  filterCandidateByModability cp ddb candidatesByMass pepMod             $ \candidatesByMassModability ->
+  mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec) $ \specThry   ->
+  mapMaybe finish `fmap` sequestXC cp candidatesByMass spec specThry
   where
+    pepMod        = ((map c2w ['M','C']), [1,2])
     spec          = sequestXCorr cp ms2
     peaks         = extractPeaks spec
 
     finish (sx,i) = liftM (\f -> Match f sx (sp f)) (lookup sdb i)
     sp            = matchIonSequence cp (ms2charge ms2) peaks
+    mass          = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
 
 
 --
@@ -75,14 +80,38 @@ searchForMatches cp sdb ddb ms2 =
 -- This generates a device array containing the indices of the relevant
 -- sequences, together with the number of candidates found.
 --
-findCandidates :: ConfigParams -> DeviceSeqDB -> MS2Data -> (Candidates -> IO b) -> IO b
-findCandidates cp db ms2 action =
+filterCandidateByMass :: ConfigParams -> DeviceSeqDB -> Float -> (Candidates -> IO b) -> IO b
+filterCandidateByMass cp db mass action =
   CUDA.allocaArray np $ \d_idx ->
   CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-delta) (mass+delta) >>= \n -> action (d_idx,n)
   where
     np    = numFragments db
     delta = massTolerance cp
-    mass  = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
+
+--
+-- Search a subset of peptides for peptides which a specific combination of modifications 
+-- can be applied.
+-- Peptides are deemed modifable if it has enough amino acids.
+--
+-- This generates a device array containing the indices of the relevant
+-- sequences, together with the number of candidates found, and for each candidate, a count of the
+-- modifiable acids in the peptide
+--
+-- @TODO also record aa counts for each peptide
+--
+filterCandidateByModability :: 
+                       ConfigParams 
+                    -> DeviceSeqDB 
+                    -> (DevicePtr Word32, Int)  --- ^ subset of peptides, [idx to pep], number of pep
+                    -> ([Word8],[Word8])        --- ^ peptide mod eg (['A','R'],[2,3])
+                    -> ((DevicePtr Word32, Int) -> IO b)
+                    -> IO b
+filterCandidateByModability cp db (d_sub_idx, sub_nIdx) (ma, ma_count) action =
+  CUDA.withVector (U.fromList ma)        $ \d_ma       ->    -- modifable acid
+  CUDA.withVector (U.fromList ma_count)  $ \d_ma_count ->    -- number of the acid to modify
+  CUDA.allocaArray sub_nIdx              $ \d_idx      ->    -- filtered results to be returned here
+  CUDA.findModablePeptides d_idx (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_ma d_ma_count >>= \n -> action (d_sub_idx, sub_nIdx)
+  --CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-delta) (mass+delta) >>= \n -> action (d_idx,n)
 
 
 --

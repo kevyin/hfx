@@ -68,6 +68,34 @@ findIndicesInRange_f
 );
 
 /*
+ * find from a subset of peptides those which a modification can be applied
+ *
+findModablePeptides :: DevicePtr Float                      --- ^ result array
+                    -> DevicePtr Word8                      --- ^ amino acid ion db
+                    -> (DevicePtr Word32, DevicePtr Word32) --- ^ c and n terminals
+                    -> DevicePtr Word32                     --- ^ subset of peps as indices
+                    -> Int                                  --- ^ number in subset
+                    -> DevicePtr Word8                      --- ^ acids to mod
+                    -> DevicePtr Word32                     --- ^ number of corres acid to mod
+                    -> IO Int
+ */
+uint32_t
+findModablePeptides
+(
+    uint32_t            *d_out,
+
+    const uint8_t       *d_ions,
+    const uint32_t      *d_tc,
+    const uint32_t      *d_tn,
+
+    const uint32_t      *d_sub_idx,
+    const uint32_t      sub_nIdx,
+
+    const uint8_t       *d_ma,
+    const uint8_t       *d_ma_count
+);
+
+/*
  * Generate theoretical spectra
  */
 void

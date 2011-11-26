@@ -7,7 +7,8 @@
 # ------------------------------------------------------------------------------
 STATIC_LIB      := libfilter.a
 
-CUFILES         := filter.cu
+CUFILES         := filter.cu \
+                   filterByMod.cu
 
 EXTRALIBS       := stdc++
 
