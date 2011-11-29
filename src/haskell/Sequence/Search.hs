@@ -110,7 +110,7 @@ filterCandidateByModability cp db (d_sub_idx, sub_nIdx) (ma, ma_count) action =
   CUDA.withVector (U.fromList ma)        $ \d_ma       ->    -- modifable acid
   CUDA.withVector (U.fromList ma_count)  $ \d_ma_count ->    -- number of the acid to modify
   CUDA.allocaArray sub_nIdx              $ \d_idx      ->    -- filtered results to be returned here
-  CUDA.findModablePeptides d_idx (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_ma d_ma_count >>= \n -> action (d_sub_idx, sub_nIdx)
+  CUDA.findModablePeptides d_idx (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_ma d_ma_count (length ma) >>= \n -> action (d_sub_idx, sub_nIdx)
   --CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-delta) (mass+delta) >>= \n -> action (d_idx,n)
 
 
@@ -141,7 +141,7 @@ mkSpecXCorr db (d_idx, nIdx) chrg len action =
 -- returning the most relevant results.
 --
 sequestXC :: ConfigParams -> Candidates -> Spectrum -> IonSeries -> IO [(Float,Int)]
-sequestXC cp (d_idx,nIdx) expr d_thry = let n = max (numMatches cp) (numMatchesDetail cp) in
+sequestXC cp (d_idx,nIdx) expr d_thry = let n' = max (numMatches cp) (numMatchesDetail cp) in
   CUDA.withVector  expr $ \d_expr  ->
   CUDA.allocaArray nIdx $ \d_score -> do
     when (verbose cp) $ hPutStrLn stderr ("Matched peptides: " ++ show nIdx)
@@ -160,6 +160,7 @@ sequestXC cp (d_idx,nIdx) expr d_thry = let n = max (numMatches cp) (numMatchesD
 
     -- Retrieve the most relevant matches
     --
+    let n = min n' nIdx
     sc <- CUDA.peekListArray n d_score
     ix <- CUDA.peekListArray n d_idx
 
