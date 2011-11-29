@@ -42,9 +42,10 @@ findModablePeptides :: DevicePtr Float                      --- ^ result array
                     -> DevicePtr Word32                     --- ^ subset of peps as indices
                     -> Int                                  --- ^ number in subset
                     -> DevicePtr Word8                      --- ^ acids to mod
-                    -> DevicePtr Word8                     --- ^ number of corres acid to mod
+                    -> DevicePtr Word8                      --- ^ number of corres acid to mod
+                    -> Int                                  --- ^ number of moddable acids
                     -> IO Int
-findModablePeptides a1 a2 (a3,a4) a5 a6 a7 a8 =
+findModablePeptides a1 a2 (a3,a4) a5 a6 a7 a8 a9 =
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
   withDevicePtr a3 $ \a3' ->
@@ -53,10 +54,10 @@ findModablePeptides a1 a2 (a3,a4) a5 a6 a7 a8 =
   --withDevicePtr a6 $ \a6' ->
   withDevicePtr a7 $ \a7' ->
   withDevicePtr a8 $ \a8' ->
-  cIntConv `fmap` findModablePeptides'_ a1' a2' a3' a4' a5' (cIntConv a6) a7' a8'
+  cIntConv `fmap` findModablePeptides'_ a1' a2' a3' a4' a5' (cIntConv a6) a7' a8' (cIntConv a9)
 
 foreign import ccall unsafe "algorithms.h findModablePeptides"
-  findModablePeptides'_ :: Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word8 -> Ptr Word8 -> IO Word32
+  findModablePeptides'_ :: Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word8 -> Ptr Word8 -> Word32 -> IO Word32
 
 
 addIons :: DevicePtr Word32 -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> Int -> Int -> Int -> IO ()

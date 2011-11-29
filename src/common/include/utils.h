@@ -13,6 +13,11 @@
 #include <math.h>
 #include <stdio.h>
 
+/* Taken from NVIDIA CUDA C Programming Guide 4.0 : B.14.4
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 200)
+    #define printf(f, ...) ((void) (f, __VA_ARGS__),0)
+#endif
+*/
 
 /*
  * Core assert function. Don't let this escape...

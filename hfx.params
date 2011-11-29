@@ -18,6 +18,6 @@ add_C                   = 57.0
 #
 # Results display
 #
-num-matches             = 5
+num-matches             = 20
 num-matches-detail      = 3
 

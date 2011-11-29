@@ -77,6 +77,7 @@ findModablePeptides :: DevicePtr Float                      --- ^ result array
                     -> Int                                  --- ^ number in subset
                     -> DevicePtr Word8                      --- ^ acids to mod
                     -> DevicePtr Word32                     --- ^ number of corres acid to mod
+                    -> Int                                  --- ^ number of moddable acids
                     -> IO Int
  */
 uint32_t
@@ -89,10 +90,11 @@ findModablePeptides
     const uint32_t      *d_tn,
 
     const uint32_t      *d_sub_idx,
-    const uint32_t      sub_nIdx,
+    const uint32_t      sub_idx_length,
 
     const uint8_t       *d_ma,
-    const uint8_t       *d_ma_count
+    const uint8_t       *d_ma_count,
+    const uint32_t      ma_length
 );
 
 /*

@@ -64,7 +64,7 @@ searchForMatches cp sdb ddb ms2 =
   mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec) $ \specThry   ->
   mapMaybe finish `fmap` sequestXC cp candidatesByMass spec specThry
   where
-    pepMod        = ((map c2w ['M','C']), [1,2])
+    pepMod        = ((map c2w ['N','C']), [1,2])
     spec          = sequestXCorr cp ms2
     peaks         = extractPeaks spec
 
