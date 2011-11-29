@@ -34,3 +34,5 @@ clobber : $(addsuffix .do,$(PROJECTS))
 	$(VERBOSE)$(CABAL) clean
 	@echo "Finished cleaning all"
 
+cudabrush:
+	rm ./dist/build/hfx/hfx-tmp/Foreign/CUDA/Algorithms.o
