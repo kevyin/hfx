@@ -64,6 +64,7 @@ __global__ static void
 findModablePeptides_core
 (
     uint32_t            *d_valid,
+    size_t              pitch,
 
     const uint8_t       *d_ions,
     const uint32_t      *d_tc,
@@ -86,33 +87,63 @@ findModablePeptides_core
     const uint32_t vector_id       = thread_id / WARP_SIZE;
     const uint32_t thread_lane     = threadIdx.x & (WARP_SIZE-1);
 
-    __shared__ volatile uint32_t s_data[BlockSize];
+    const unsigned int MAX_MA = 10;
+    assert(MAX_MA >= ma_length);
 
+    // Keep a count for each mod
+    __shared__ volatile uint32_t s_data[MAX_MA][BlockSize];
+
+    // for each peptide
     for (uint32_t row = vector_id; row < sub_idx_length; row += numVectors)
     {
         const uint32_t idx       = d_sub_idx[row];
         const uint32_t row_start = d_tc[idx];
         const uint32_t row_end   = d_tn[idx];
 
-        s_data[threadIdx.x] = 0;
+        for (int mod = 0; mod < ma_length; mod++)
+        {
+            s_data[mod][threadIdx.x] = 0;
+        }
 
 
+        // for each amino acid
         for (uint32_t j = row_start + thread_lane; j < row_end; j += WARP_SIZE)
         {
-            // check if acid is one that should be modded
-            uint32_t count = 0;
-            if (d_ma[0] == d_ions[j])
-                count++;
+            bool isModable = true; 
+            // for each modable amino acid
+            for (int mod = 0; mod < ma_length && isModable; mod++) 
+            {
+                uint32_t count = 0;
+                if (d_ma[mod] == d_ions[j])
+                    count++;
 
-            if (thread_lane == 0)
-                count += s_data[threadIdx.x + (WARP_SIZE-1)];
-            
-            count = scan_warp<uint32_t, true>(count, s_data); 
+                if (thread_lane == 0)
+                    count += s_data[mod][threadIdx.x + (WARP_SIZE-1)];
+                
+                count = scan_warp<uint32_t, true>(count, s_data[mod]); 
 
-            if (j == row_end-1) {
-                d_valid[row] = count;
+                if (j == row_end-1) { // last aa in peptide
+                    if (count < d_ma_count[mod]) // check if not enough aa for mod
+                    {
+                        isModable = false;
+                    } else {
+                        isModable = true;
+                        // record pep aa counts
+                        // flattened version
+                        /*d_valid[row*ma_length + mod] = count; */
+
+                        // pitch version
+                        // required as d_valid is allocated using cudaMallocPitch 
+                        /*uint32_t* d_valid_ptr = (uint32_t*)((char*)d_valid + row * pitch);*/
+                        /*d_valid_ptr[mod] = count;*/
+                        // record validity
+                    }
+                }
             }
-
+            if (j == row_end-1)
+            {
+                d_valid[row] = (isModable) ? 1 : 0;
+            }
         }
 
     }
@@ -165,8 +196,11 @@ findModablePeptides
     uint32_t            threads;
     uint32_t            blocks;
     uint32_t            *d_valid_raw;
+    size_t              pitch;
 
     CUDA_SAFE_CALL( cudaMalloc((void**) &d_valid_raw, sub_idx_length* sizeof(uint32_t)) );
+    /*CUDA_SAFE_CALL( cudaMalloc((void**) &count, ma_length*sub_idx_length* sizeof(uint32_t)) );*/
+    /*CUDA_SAFE_CALL( cudaMallocPitch(&count, &pitch, ma_length*sizeof(uint32_t), sub_idx_length) );*/
 
     // control
     findByMod_control(sub_idx_length, blocks, threads);
@@ -174,9 +208,9 @@ findModablePeptides
     // core
     switch (threads)
     {
-    case 128: findModablePeptides_core<128><<<blocks, threads>>>(d_valid_raw, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case  64: findModablePeptides_core< 64><<<blocks, threads>>>(d_valid_raw, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case  32: findModablePeptides_core< 32><<<blocks, threads>>>(d_valid_raw, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
+    case 128: findModablePeptides_core<128><<<blocks, threads>>>(d_valid_raw, pitch, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
+    case  64: findModablePeptides_core< 64><<<blocks, threads>>>(d_valid_raw, pitch, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
+    case  32: findModablePeptides_core< 32><<<blocks, threads>>>(d_valid_raw, pitch, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
     }
 
     // compact
@@ -187,11 +221,24 @@ findModablePeptides
     thrust::device_ptr<uint32_t>        d_out(d_out_raw);
 
     // print before compaction
+    std::cout << "pitch " << pitch << std::endl;
     thrust::host_vector<uint32_t> H(d_valid, d_valid + sub_idx_length);
-    std::cout << "Printing results. no. in subset " << sub_idx_length << std::endl;
+    std::cout << "Printing results." << std::endl;
+
     for(int i = 0; i < sub_idx_length; i++) {
-        std::cout << "d_valid " << H[i] << std::endl;
+        std::cout << "d_valid " << d_valid[i] << std::endl;
     }
+
+    /*std::cout << "Printing results." << std::endl;*/
+    /*for(int r = 0; r < sub_idx_length; r++) {*/
+    
+        /*thrust::device_ptr<uint32_t> v_ptr((uint32_t*)((char*)d_valid_raw + r * pitch));*/
+        /*thrust::host_vector<uint32_t> val(v_ptr, v_ptr + ma_length);*/
+        /*for (int c = 0; c < ma_length; c++) {*/
+            /*std::cout << "d_valid " << c << "| " << val[c] << ' ';*/
+        /*}*/
+        /*std::cout << std::endl;*/
+    /*}*/
    
     // copy if there are enough aa's to apply the mod
     thrust::device_ptr<const uint32_t> d_sub_idx_th(d_sub_idx); 
