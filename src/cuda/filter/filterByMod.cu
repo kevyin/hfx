@@ -180,6 +180,24 @@ struct greaterThan : public thrust::unary_function<T,bool>
     }
 };
 
+/**
+ * allows expansion into matrix
+ */
+template <typename T>
+struct expandValid: public thrust::unary_function<uint32_t,T>
+{
+
+    thrust::device_ptr<T> rowValues;
+    uint32_t width;
+    __host__ __device__
+    expandValid(thrust::device_ptr<T> _values, uint32_t _w) : rowValues(_values), width(_w) {}
+
+    __host__ __device__ bool operator() (uint32_t e)
+    {
+        return rowValues[e/width];
+    }
+};
+
 uint32_t
 findModablePeptides
 (
@@ -228,6 +246,7 @@ findModablePeptides
     thrust::device_ptr<uint32_t>        d_out_valid(d_out_valid_raw);
 
     thrust::device_ptr<const uint32_t>  d_pep_ma_count(d_pep_ma_count_raw);
+    thrust::device_ptr<uint32_t>        d_out_pep_ma_count(d_out_pep_ma_count_raw);
 
     // print before compaction
     /*std::cout << "pitch " << pitch << std::endl;*/
@@ -254,9 +273,23 @@ findModablePeptides
     /*}*/
    
     // copy if there are enough aa's to apply the mod
+    // d_valid
     thrust::device_ptr<const uint32_t> d_sub_idx_th(d_sub_idx); 
     thrust::device_ptr<uint32_t> d_out_valid_end =
         thrust::copy_if(d_sub_idx_th, d_sub_idx_th + sub_idx_length, d_valid, d_out_valid, greaterThan<const uint32_t>(0));
+
+    // d_pep_ma_count
+    // First expand d_valid to same length as d_pep_ma_count
+    // define the sequence [0, N)
+    const uint32_t N = ma_length*sub_idx_length;
+    thrust::counting_iterator<uint32_t> first(0);
+    thrust::counting_iterator<uint32_t> last = first + N;
+    thrust::device_vector<uint32_t> d_valid_padded_th(N);
+
+    thrust::transform(first, last, d_valid_padded_th.begin(), expandValid<const uint32_t>(d_valid, ma_length));  
+    
+    thrust::device_ptr<uint32_t> d_out_pep_ma_count_end =
+        thrust::copy_if(d_pep_ma_count, d_pep_ma_count + N, d_valid_padded_th.begin(), d_out_pep_ma_count, greaterThan<const uint32_t>(0));
 
 
     cudaFree(d_valid_raw);
@@ -264,10 +297,13 @@ findModablePeptides
 
 
     // print d_out_valid after compaction
-    thrust::host_vector<uint32_t> H_compact(d_out_valid, d_out_valid_end);
-    std::cout << "Printing results" << std::endl;
+    std::cout << "Printing after compact" << std::endl;
     for(int i = 0; i < d_out_valid_end - d_out_valid; i++) {
-        std::cout << "d_out " << H_compact[i] << std::endl;
+        std::cout << "d_out_valid " << d_out_valid[i] << std::endl;
+        for (int j = 0; j < ma_length; j++) {
+            std::cout << d_out_pep_ma_count[i*ma_length + j] << " ";
+        }
+        std::cout << std::endl;
     }
     
 
