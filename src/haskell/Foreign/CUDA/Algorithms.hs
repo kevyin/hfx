@@ -36,28 +36,30 @@ foreign import ccall unsafe "algorithms.h findIndicesInRange_f"
   findIndicesInRange'_ :: Ptr Float -> Ptr Word32 -> Word32 -> Float -> Float -> IO Word32
 
 --findModablePeptides d_idx (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_ma d_ma_count >>= \n -> action (d_idx,n)
-findModablePeptides :: DevicePtr Float                      --- ^ result array
+findModablePeptides :: DevicePtr Word32                     --- ^ result array, indices to modable peps
+                    -> DevicePtr Word32                     --- ^ result array, pep ma counts
                     -> DevicePtr Word8                      --- ^ amino acid ion db
                     -> (DevicePtr Word32, DevicePtr Word32) --- ^ c and n terminals
                     -> DevicePtr Word32                     --- ^ subset of peps as indices
                     -> Int                                  --- ^ number in subset
-                    -> DevicePtr Word8                      --- ^ acids to mod
+                    -> DevicePtr Word8                      --- ^ ma - modable acids 
                     -> DevicePtr Word8                      --- ^ number of corres acid to mod
                     -> Int                                  --- ^ number of moddable acids
                     -> IO Int
-findModablePeptides a1 a2 (a3,a4) a5 a6 a7 a8 a9 =
+findModablePeptides a1 a2 a3 (a4,a5) a6 a7 a8 a9 a10 =
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
   withDevicePtr a3 $ \a3' ->
   withDevicePtr a4 $ \a4' ->
   withDevicePtr a5 $ \a5' ->
-  --withDevicePtr a6 $ \a6' ->
-  withDevicePtr a7 $ \a7' ->
+  withDevicePtr a6 $ \a6' ->
+  --withDevicePtr a7 $ \a7' ->
   withDevicePtr a8 $ \a8' ->
-  cIntConv `fmap` findModablePeptides'_ a1' a2' a3' a4' a5' (cIntConv a6) a7' a8' (cIntConv a9)
+  withDevicePtr a9 $ \a9' ->
+  cIntConv `fmap` findModablePeptides'_ a1' a2' a3' a4' a5' a6' (cIntConv a7) a8' a9' (cIntConv a10)
 
 foreign import ccall unsafe "algorithms.h findModablePeptides"
-  findModablePeptides'_ :: Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word8 -> Ptr Word8 -> Word32 -> IO Word32
+  findModablePeptides'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word8 -> Ptr Word8 -> Word32 -> IO Word32
 
 
 addIons :: DevicePtr Word32 -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> Int -> Int -> Int -> IO ()

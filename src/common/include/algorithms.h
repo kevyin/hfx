@@ -70,7 +70,8 @@ findIndicesInRange_f
 /*
  * find from a subset of peptides those which a modification can be applied
  *
-findModablePeptides :: DevicePtr Float                      --- ^ result array
+findModablePeptides :: DevicePtr Word32                     --- ^ result array, indices to modable peps
+                    -> DevicePtr Word32                     --- ^ result array, pep ma counts
                     -> DevicePtr Word8                      --- ^ amino acid ion db
                     -> (DevicePtr Word32, DevicePtr Word32) --- ^ c and n terminals
                     -> DevicePtr Word32                     --- ^ subset of peps as indices
@@ -83,7 +84,8 @@ findModablePeptides :: DevicePtr Float                      --- ^ result array
 uint32_t
 findModablePeptides
 (
-    uint32_t            *d_out,
+    uint32_t            *d_out_valid_raw,           // valid indices from sub_idx
+    uint32_t            *d_out_pep_ma_count_raw,    // 2d array, count of each ma in each peptide
 
     const uint8_t       *d_ions,
     const uint32_t      *d_tc,
