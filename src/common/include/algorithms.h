@@ -99,6 +99,16 @@ findModablePeptides
     const uint32_t      ma_length
 );
 
+uint32_t
+calcTotalModCands
+(
+    uint32_t          *d_out_pep_mpep_count,
+    const uint32_t    nPep,
+    const uint32_t    *d_pep_ma_count,
+    const uint8_t     *d_ma_count,
+    const uint32_t    ma_length
+);
+
 /*
  * Generate theoretical spectra
  */
