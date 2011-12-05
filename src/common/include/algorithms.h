@@ -109,6 +109,17 @@ calcTotalModCands
     const uint32_t    ma_length
 );
 
+void
+genModCands
+(
+    uint32_t        *d_out_mpep_idx,
+    uint32_t        *d_out_mpep_mcomb,
+    const uint32_t  total,
+    const uint32_t  *d_pep_idx,
+    const uint32_t  *d_pep_mpep_count,
+    const uint32_t  num_pep
+);
+
 /*
  * Generate theoretical spectra
  */

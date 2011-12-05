@@ -15,6 +15,7 @@ module Foreign.CUDA.Algorithms
     findIndicesInRange, 
     findModablePeptides,
     calcTotalModCands, 
+    genModCands,
     addIons,
     rsort,
     mvm
@@ -68,7 +69,7 @@ calcTotalModCands :: DevicePtr Word32
                   -> DevicePtr Word8
                   -> Int
                   -> IO Int
-calcTotalModCands a1 a2 a3 a4 a5=
+calcTotalModCands a1 a2 a3 a4 a5 =
   withDevicePtr a1 $ \a1' ->
   --withDevicePtr a2 $ \a2' ->
   withDevicePtr a3 $ \a3' ->
@@ -78,6 +79,25 @@ calcTotalModCands a1 a2 a3 a4 a5=
 
 foreign import ccall unsafe "algorithms.h calcTotalModCands"
   calcTotalModCands'_ :: Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word8 -> Word32 -> IO Word32
+
+genModCands :: DevicePtr Word32
+            -> DevicePtr Word32
+            -> Int
+            -> DevicePtr Word32
+            -> DevicePtr Word32
+            -> Int
+            -> IO ()
+genModCands a1 a2 a3 a4 a5 a6 =
+  withDevicePtr a1 $ \a1' ->
+  withDevicePtr a2 $ \a2' ->
+  --withDevicePtr a3 $ \a3' ->
+  withDevicePtr a4 $ \a4' ->
+  withDevicePtr a5 $ \a5' ->
+  --withDevicePtr a6 $ \a6' ->
+  genModCands'_ a1' a2' (cIntConv a3) a4' a5' (cIntConv a6)
+
+foreign import ccall unsafe "algorithms.h genModCands"
+  genModCands'_ :: Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> IO ()
 
 addIons :: DevicePtr Word32 -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> Int -> Int -> Int -> IO ()
 addIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 =

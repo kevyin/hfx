@@ -45,10 +45,11 @@ import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
 import qualified Foreign.CUDA.Algorithms        as CUDA
 
+import Debug.Trace
 
 type CandidatesByMass = (Int, DevicePtr Word32)
 type CandidatesByMod  = (Int, DevicePtr Word32, DevicePtr Word32)
-type ModCandidates = Int
+type ModCandidates = (DevicePtr Word32, DevicePtr Word32, Int)
 type PepMod = (DevicePtr Word8, DevicePtr Word8, Int)
 type IonSeries  = DevicePtr Word32
 
@@ -70,8 +71,8 @@ searchForMatches cp sdb ddb ms2 =
   mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec) $ \specThry   ->
   mapMaybe finish `fmap` sequestXC cp candidatesByMass spec specThry
   where
-    ma            = map c2w ['S','L'] 
-    ma_count      = [1,2]
+    ma            = map c2w ['S'] 
+    ma_count      = [1]
     num_ma = length ma
     spec          = sequestXCorr cp ms2
     peaks         = extractPeaks spec
@@ -116,7 +117,11 @@ filterCandidateByModability ::
 filterCandidateByModability cp db (sub_nIdx, d_sub_idx) (d_ma, d_ma_count, num_ma) action =
   CUDA.allocaArray sub_nIdx             $ \d_idx      ->     -- filtered results to be returned here
   CUDA.allocaArray (sub_nIdx*num_ma)      $ \d_pep_ma_count -> -- peptide ma counts
-  CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_ma d_ma_count num_ma >>= \n -> action (n, d_idx, d_pep_ma_count)
+  CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_ma d_ma_count num_ma >>= \n -> 
+    traceShow ("num peptides searched", sub_nIdx) $
+    traceShow ("num modable", n) $
+    traceShow ("pep_ma_count not used ", num_ma*(sub_nIdx - n)) $ 
+    action (n, d_idx, d_pep_ma_count)
   --CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-delta) (mass+delta) >>= \n -> action (d_idx,n)
 
 
@@ -133,9 +138,12 @@ genModCandidates :: ConfigParams
 genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (d_ma, d_ma_count, num_ma) action =
   -- calc number of modified peps generated from each pep
   CUDA.allocaArray nPep $ \d_pep_mpep_count -> 
-  CUDA.calcTotalModCands d_pep_mpep_count nPep d_pep_ma_count d_ma_count num_ma >>= \total -> action total
-  --CUDA.allocaArray total $ \d_modCand ->
-  --CUDA.genCandidates >>=
+  CUDA.calcTotalModCands d_pep_mpep_count nPep d_pep_ma_count d_ma_count num_ma >>= \total -> 
+  --action total
+  CUDA.allocaArray total $ \d_mpep_mcomb -> do
+  CUDA.allocaArray total $ \d_mpep_idx -> do
+      CUDA.genModCands d_mpep_idx d_mpep_mcomb total d_pep_idx d_pep_mpep_count nPep
+      action (d_mpep_idx, d_mpep_mcomb, total)
 
 --
 -- Generate a theoretical spectral representation for each of the specified
