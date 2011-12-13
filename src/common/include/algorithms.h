@@ -123,6 +123,7 @@ genModCands
     const uint32_t  *d_pep_idx,
     const uint32_t  *d_pep_num_mpep,
     const uint32_t  *d_pep_ma_num_comb,
+    const uint32_t  *d_pep_ma_num_comb_scan,
     const uint32_t  num_pep,
    
     const uint32_t  *d_pep_ma_count,        // 2d array of ma count in each pep

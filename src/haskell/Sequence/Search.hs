@@ -145,7 +145,7 @@ genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma,
   --action total
   CUDA.allocaArray total $ \d_mpep_mcomb -> do
   CUDA.allocaArray total $ \d_mpep_idx -> do
-      CUDA.genModCands d_mpep_idx d_mpep_mcomb total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb nPep d_pep_ma_count d_mod_ma_count mod_num_ma
+      CUDA.genModCands d_mpep_idx d_mpep_mcomb total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma
       action (total, d_mpep_idx, d_mpep_mcomb)
 
 mkModSpecXCorr :: DeviceSeqDB
