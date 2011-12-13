@@ -106,6 +106,7 @@ calcTotalModCands
 (
     uint32_t          *d_out_pep_num_mpep,
     uint32_t          *d_out_pep_ma_num_comb,
+    uint32_t          *d_out_pep_ma_num_comb_scan,
     const uint32_t    nPep,                   // number of peptides
     const uint32_t    *d_pep_ma_count,        // 2d array of ma count in each pep
     const uint8_t     *d_mod_ma_count,             

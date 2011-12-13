@@ -140,7 +140,8 @@ genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma,
   -- calc number of modified peps generated from each pep
   CUDA.allocaArray nPep $ \d_pep_num_mpep -> 
   CUDA.allocaArray (nPep*mod_num_ma) $ \d_pep_ma_num_comb -> 
-  CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb nPep d_pep_ma_count d_mod_ma_count mod_num_ma >>= \total -> 
+  CUDA.allocaArray (nPep*mod_num_ma) $ \d_pep_ma_num_comb_scan -> 
+  CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma >>= \total -> 
   --action total
   CUDA.allocaArray total $ \d_mpep_mcomb -> do
   CUDA.allocaArray total $ \d_mpep_idx -> do

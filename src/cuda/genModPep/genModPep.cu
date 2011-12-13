@@ -108,6 +108,7 @@ calcTotalModCands
 (
     uint32_t          *d_out_pep_num_mpep,
     uint32_t          *d_out_pep_ma_num_comb,
+    uint32_t          *d_out_pep_ma_num_comb_scan,
     const uint32_t    nPep,                   // number of peptides
 
     const uint32_t    *d_pep_ma_count,        // 2d array of ma count in each pep
@@ -117,6 +118,7 @@ calcTotalModCands
 {
     thrust::device_ptr<uint32_t>        d_out_pep_num_mpep_th(d_out_pep_num_mpep);
     thrust::device_ptr<uint32_t>        d_out_pep_ma_num_comb_th(d_out_pep_ma_num_comb); 
+    thrust::device_ptr<uint32_t>        d_out_pep_ma_num_comb_scan_th(d_out_pep_ma_num_comb_scan);
     thrust::device_ptr<const uint32_t>  d_pep_ma_count_th(d_pep_ma_count);
     thrust::device_ptr<const uint8_t>   d_mod_ma_count_th(d_mod_ma_count);
     
@@ -124,10 +126,10 @@ calcTotalModCands
     thrust::counting_iterator<uint32_t> last = first + nPep*mod_num_ma;
     thrust::transform(first,last, d_out_pep_ma_num_comb_th, calcNumCombPerAcid<const uint32_t>(d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma));
 
-    thrust::device_vector<uint32_t> d_out_pep_ma_num_comb_scan_th(nPep*mod_num_ma);
+    //thrust::device_vector<uint32_t> d_out_pep_ma_num_comb_scan_th(nPep*mod_num_ma);
     //thrust::counting_iterator<uint32_t> first(0);
     last = first + nPep;
-    thrust::transform(first, last, d_out_pep_num_mpep_th, calcNumMPepPerPep<const uint32_t>(d_out_pep_ma_num_comb_th, d_out_pep_ma_num_comb_scan_th.data(), mod_num_ma));
+    thrust::transform(first, last, d_out_pep_num_mpep_th, calcNumMPepPerPep<const uint32_t>(d_out_pep_ma_num_comb_th, d_out_pep_ma_num_comb_scan_th, mod_num_ma));
 
     ////print scans
     //std::cout << "ma_num_comb not scanned and scanned" << std::endl;
