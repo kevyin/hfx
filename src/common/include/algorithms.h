@@ -16,6 +16,8 @@
 extern "C" {
 #endif
 
+// Maximum modable aa's
+#define MAX_MA  10
 
 #if 0
 /*
@@ -94,19 +96,20 @@ findModablePeptides
     const uint32_t      *d_sub_idx,
     const uint32_t      sub_idx_length,
 
-    const uint8_t       *d_ma,
-    const uint8_t       *d_ma_count,
-    const uint32_t      ma_length
+    const uint8_t       *d_mod_ma,
+    const uint8_t       *d_mod_ma_count,
+    const uint32_t      num_ma
 );
 
 uint32_t
 calcTotalModCands
 (
-    uint32_t          *d_out_pep_mpep_count,
-    const uint32_t    nPep,
-    const uint32_t    *d_pep_ma_count,
-    const uint8_t     *d_ma_count,
-    const uint32_t    ma_length
+    uint32_t          *d_out_pep_num_mpep,
+    uint32_t          *d_out_pep_ma_num_comb,
+    const uint32_t    nPep,                   // number of peptides
+    const uint32_t    *d_pep_ma_count,        // 2d array of ma count in each pep
+    const uint8_t     *d_mod_ma_count,             
+    const uint32_t    mod_num_ma
 );
 
 void
@@ -115,9 +118,34 @@ genModCands
     uint32_t        *d_out_mpep_idx,
     uint32_t        *d_out_mpep_mcomb,
     const uint32_t  total,
+
     const uint32_t  *d_pep_idx,
-    const uint32_t  *d_pep_mpep_count,
-    const uint32_t  num_pep
+    const uint32_t  *d_pep_num_mpep,
+    const uint32_t  *d_pep_ma_num_comb,
+    const uint32_t  num_pep,
+   
+    const uint32_t  *d_pep_ma_count,        // 2d array of ma count in each pep
+
+    const uint8_t   *d_mod_ma_count,             
+    const uint32_t  mod_num_ma
+);
+
+void addModIons
+(
+    uint32_t            *d_mspec,
+    const float         *d_residual,
+    const float         *d_mass,
+    const uint8_t       *d_ions,
+    const uint32_t      *d_tc,
+    const uint32_t      *d_tn,
+    const uint32_t      *d_mpep_idx,
+    const uint32_t      *d_mpep_mcomb,
+    const uint32_t      num_mpep,
+    const uint8_t       *d_mod_ma,
+    const uint8_t       *d_mod_ma_count,
+    const uint32_t      num_ma,
+    const uint32_t      max_charge,
+    const uint32_t      len_spec
 );
 
 /*

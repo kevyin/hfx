@@ -12,11 +12,9 @@
 
 module Foreign.CUDA.Algorithms
   (
-    findIndicesInRange, 
-    findModablePeptides,
-    calcTotalModCands, 
-    genModCands,
-    addIons,
+    findIndicesInRange, findModablePeptides,
+    calcTotalModCands, genModCands,
+    addIons, addModIons, 
     rsort,
     mvm
   )
@@ -64,40 +62,73 @@ foreign import ccall unsafe "algorithms.h findModablePeptides"
   findModablePeptides'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word8 -> Ptr Word8 -> Word32 -> IO Word32
 
 calcTotalModCands :: DevicePtr Word32
+                  -> DevicePtr Word32
                   -> Int
                   -> DevicePtr Word32
                   -> DevicePtr Word8
                   -> Int
                   -> IO Int
-calcTotalModCands a1 a2 a3 a4 a5 =
-  withDevicePtr a1 $ \a1' ->
-  --withDevicePtr a2 $ \a2' ->
-  withDevicePtr a3 $ \a3' ->
-  withDevicePtr a4 $ \a4' ->
-  --withDevicePtr a5 $ \a5' ->
-  cIntConv `fmap` calcTotalModCands'_ a1' (cIntConv a2) a3' a4' (cIntConv a5)
-
-foreign import ccall unsafe "algorithms.h calcTotalModCands"
-  calcTotalModCands'_ :: Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word8 -> Word32 -> IO Word32
-
-genModCands :: DevicePtr Word32
-            -> DevicePtr Word32
-            -> Int
-            -> DevicePtr Word32
-            -> DevicePtr Word32
-            -> Int
-            -> IO ()
-genModCands a1 a2 a3 a4 a5 a6 =
+calcTotalModCands a1 a2 a3 a4 a5 a6 =
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
   --withDevicePtr a3 $ \a3' ->
   withDevicePtr a4 $ \a4' ->
   withDevicePtr a5 $ \a5' ->
   --withDevicePtr a6 $ \a6' ->
-  genModCands'_ a1' a2' (cIntConv a3) a4' a5' (cIntConv a6)
+  cIntConv `fmap` calcTotalModCands'_ a1' a2' (cIntConv a3) a4' a5' (cIntConv a6)
+
+foreign import ccall unsafe "algorithms.h calcTotalModCands"
+  calcTotalModCands'_ :: Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word8 -> Word32 -> IO Word32
+
+genModCands :: DevicePtr Word32
+            -> DevicePtr Word32
+            -> Int
+            -> DevicePtr Word32
+            -> DevicePtr Word32
+            -> DevicePtr Word32
+            -> Int
+            -> DevicePtr Word32
+            -> DevicePtr Word8
+            -> Int
+            -> IO ()
+genModCands a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 =
+  withDevicePtr a1 $ \a1' ->
+  withDevicePtr a2 $ \a2' ->
+  --withDevicePtr a3 $ \a3' ->
+  --
+  withDevicePtr a4 $ \a4' ->
+  withDevicePtr a5 $ \a5' ->
+  withDevicePtr a6 $ \a6' ->
+  --withDevicePtr a7 $ \a7' ->
+  --
+  withDevicePtr a8 $ \a8' ->
+  withDevicePtr a9 $ \a9' ->
+  --withDevicePtr a10 $ \a10' ->
+  genModCands'_ a1' a2' (cIntConv a3) a4' a5' a6' (cIntConv a7) a8' a9' (cIntConv a10)
 
 foreign import ccall unsafe "algorithms.h genModCands"
-  genModCands'_ :: Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> IO ()
+  genModCands'_ :: Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word8 -> Word32 -> IO ()
+
+addModIons :: DevicePtr Word32 -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> DevicePtr Word32 -> Int -> DevicePtr Word8 -> DevicePtr Word8 -> Int -> Int -> Int -> IO ()
+addModIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 a11 a12 a13 a14 =
+  withDevicePtr a1 $ \a1' ->
+  withDevicePtr a2 $ \a2' ->
+  withDevicePtr a3 $ \a3' ->
+  withDevicePtr a4 $ \a4' ->
+  withDevicePtr a5 $ \a5' ->
+  withDevicePtr a6 $ \a6' ->
+  withDevicePtr a7 $ \a7' ->
+  withDevicePtr a8 $ \a8' ->
+  --withDevicePtr a9 $ \a9' ->
+  withDevicePtr a10 $ \a10' ->
+  withDevicePtr a11 $ \a11' ->
+  --withDevicePtr a12 $ \a12' ->
+  --withDevicePtr a13 $ \a13' ->
+  --withDevicePtr a14 $ \a14' ->
+  addModIons'_ a1' a2' a3' a4' a5' a6' a7' a8' (cIntConv a9) a10' a11' (cIntConv a12) (cIntConv a13) (cIntConv a14)
+
+foreign import ccall unsafe "algorithms.h addModIons"
+  addModIons'_ :: Ptr Word32 -> Ptr Float -> Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word8 -> Ptr Word8 -> Word32 -> Word32 -> Word32 -> IO ()
 
 addIons :: DevicePtr Word32 -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> Int -> Int -> Int -> IO ()
 addIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 =

@@ -88,7 +88,6 @@ findModablePeptides_core
     const uint32_t vector_id       = thread_id / WARP_SIZE;
     const uint32_t thread_lane     = threadIdx.x & (WARP_SIZE-1);
 
-    const unsigned int MAX_MA = 10;
     assert(MAX_MA >= ma_length);
 
     // Keep a count for each mod
@@ -145,7 +144,7 @@ findModablePeptides_core
             }
             if (j == row_end-1) // last aa
             {
-                // @TODO 
+                // @TODO ??
                 // if modable, calculate and record total number of modified peptides else 0
                 d_valid[row] = (isModable) ? 1 : 0;
             }

@@ -30,4 +30,50 @@ choose(const uint32_t n, const uint32_t k)
     return t;
 }
 
+__device__ uint32_t 
+largestV(const uint32_t a, const uint32_t b, const uint32_t x) {
+    uint32_t v = a - 1;
+    while (choose(v, b) > x)
+        --v;
+
+    return v;
+}
+
+/*
+ * ans should be of length k
+ */
+__device__ void
+unrankComb (uint32_t *ans, const uint32_t& n, const uint32_t& k, const uint32_t& rank) {
+    //vector<uint32_t> ans(k);
+
+    uint32_t a = n;
+    uint32_t b = k;
+    //uint32_t x = choose(n,k) - 1 - rank;
+    uint32_t total = choose(n,k);
+    uint32_t x; 
+    bool usingDual = false;
+
+    if ((total/2) >= rank) {
+        x = rank;
+    } else {
+        x = total - 1 - rank;
+        usingDual = true;
+    }
+
+    for (uint32_t i = 0; i < k; ++i) {
+        ans[i] = largestV(a,b,x);    
+        x = x - choose(ans[i],b);
+        a = ans[i];
+        b = b - 1;
+    }
+
+    if (usingDual) {
+        for (uint32_t i = 0; i < k; ++i) {
+            ans[i] = (n - 1) - ans[i];
+        }
+    }
+
+    //return ans;
+}    
+
 #endif
