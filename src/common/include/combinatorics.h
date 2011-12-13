@@ -43,7 +43,7 @@ largestV(const uint32_t a, const uint32_t b, const uint32_t x) {
  * ans should be of length k
  */
 __device__ void
-unrankComb (uint32_t *ans, const uint32_t& n, const uint32_t& k, const uint32_t& rank) {
+unrankComb (uint32_t *ans, const uint32_t n, const uint32_t k, const uint32_t rank) {
     //vector<uint32_t> ans(k);
 
     uint32_t a = n;

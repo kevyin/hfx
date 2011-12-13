@@ -181,7 +181,7 @@ calcTotalModCands
 __host__ __device__ void
 add_ma_ranks 
 (
-    thrust::device_ptr<uint32_t>        d_out_ma_ranks_row,
+    uint32_t                            *d_out_ma_ranks_row,
     const uint32_t                      mpep_rank,
     thrust::device_ptr<const uint32_t>  d_pep_ma_num_comb_scan_row,
     const uint32_t                      mod_num_ma
@@ -189,7 +189,7 @@ add_ma_ranks
 {
     //thrust::device_vector<uint32_t> ma_ranks(mod_num_ma);
     
-    uint32_t *ma_ranks_raw = (d_out_ma_ranks_row).get();
+    uint32_t *ma_ranks_raw = d_out_ma_ranks_row;
 
     uint32_t x = mpep_rank;
 
@@ -220,36 +220,55 @@ struct add_mpep_unrank: public thrust::unary_function<T, uint32_t>
     thrust::device_ptr<const uint32_t>    d_mpep_rank;
     thrust::device_ptr<const uint32_t>    d_mpep_rank_ith_pep;
 
+    thrust::device_ptr<const uint32_t>    d_pep_ma_count;
+
+    thrust::device_ptr<const uint8_t>     d_mod_ma_count;
     const uint32_t                        mod_num_ma;
+
     const uint32_t                        sum_mod_ma_count;
 
 
     __host__ __device__
     add_mpep_unrank (thrust::device_ptr<uint32_t>       _out_mpep_unrank, 
+
                      thrust::device_ptr<const uint32_t> _pep_ma_num_comb_scan,
                      thrust::device_ptr<const uint32_t> _mpep_rank,
                      thrust::device_ptr<const uint32_t> _mpep_rank_ith_pep,
+                     thrust::device_ptr<const uint32_t> _pep_ma_count,
+                     thrust::device_ptr<const uint8_t>  _mod_ma_count,
                      const uint32_t                     _mod_num_ma,
                      const uint32_t                     _sum_mod_ma_count) : 
                      d_out_mpep_unrank      (_out_mpep_unrank), 
                      d_pep_ma_num_comb_scan (_pep_ma_num_comb_scan),
                      d_mpep_rank            (_mpep_rank),
                      d_mpep_rank_ith_pep    (_mpep_rank_ith_pep),
+                     d_pep_ma_count         (_pep_ma_count),
+                     d_mod_ma_count         (_mod_ma_count),
                      mod_num_ma             (_mod_num_ma),
                      sum_mod_ma_count       (_sum_mod_ma_count) {}
 
     __host__ __device__ uint32_t operator() (T mpep)
     {
         uint32_t mpep_rank = d_mpep_rank[mpep];
+        uint32_t ith_pep  = d_mpep_rank_ith_pep[mpep];
         // mpep_rank -> ma_ranks
         //thrust::device_vector<uint32_t> d_ma_ranks(mod_num_ma);
-        //add_ma_ranks(d_ma_ranks.data(), mpep_rank, d_pep_ma_num_comb_scan + d_mpep_rank_ith_pep[mpep]*mod_num_ma, mod_num_ma);
-        add_ma_ranks(d_out_mpep_unrank + mpep*sum_mod_ma_count, mpep_rank, d_pep_ma_num_comb_scan + d_mpep_rank_ith_pep[mpep]*mod_num_ma, mod_num_ma);
+        uint32_t d_ma_ranks[MAX_MA];
+        add_ma_ranks(d_ma_ranks, mpep_rank, d_pep_ma_num_comb_scan + d_mpep_rank_ith_pep[mpep]*mod_num_ma, mod_num_ma);
+        //add_ma_ranks(d_out_mpep_unrank + mpep*sum_mod_ma_count, mpep_rank, d_pep_ma_num_comb_scan + ith_pep*mod_num_ma, mod_num_ma);
 
+        uint32_t unrank_pos = 0;
         
-        //uint32_t *d_out_mpep_unrank_raw = (d_out_mpep_unrank).get();
         // foreach ma, unrank and add to mpep_unrank
-        //uint32_t pep_ma_num_comb_idx = pep * mod_num_ma;
+        //add_mpep_unrank(d_out_mpep_unrank + mpep*sum_mod_ma_count);
+        for (uint32_t i = 0; i < mod_num_ma; ++i)
+        {
+            unrankComb((d_out_mpep_unrank + mpep*sum_mod_ma_count + unrank_pos).get(), 
+                       d_pep_ma_count[ith_pep*mod_num_ma + i], 
+                       d_mod_ma_count[i], 
+                       d_ma_ranks[i]);
+            unrank_pos += d_mod_ma_count[i];
+        }
         
         return mpep;
         //return num;
@@ -350,6 +369,8 @@ genModCands
                         d_pep_ma_num_comb_scan_th,
                         d_out_mpep_rank_th,
                         d_mpep_rank_ith_pep_th.data(),
+                        d_pep_ma_count_th,
+                        d_mod_ma_count_th,
                         mod_num_ma,
                         sum_mod_ma_count)); 
 
@@ -361,7 +382,7 @@ genModCands
     std::cout << std::endl;
 
     // print
-    std::cout << "d_out_mpep_ma_rank" << std::endl;
+    std::cout << "d_out_mpep_urank" << std::endl;
     for (uint32_t i = 0; i < total; i++) {
         for (uint32_t j = 0; j < sum_mod_ma_count; ++j) {
             std::cout << d_out_mpep_unrank[i*sum_mod_ma_count + j] << " " ;
