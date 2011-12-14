@@ -280,6 +280,7 @@ genModCands
 (                                                                     
     uint32_t        *d_out_mpep_idx,
     uint32_t        *d_out_mpep_rank,
+    uint32_t        *d_out_mpep_unrank,
     const uint32_t  total,
 
     const uint32_t  *d_pep_idx,
@@ -297,6 +298,7 @@ genModCands
     std::cout << "genModCands" << std::endl;
     thrust::device_ptr<uint32_t> d_out_mpep_idx_th(d_out_mpep_idx);
     thrust::device_ptr<uint32_t> d_out_mpep_rank_th(d_out_mpep_rank);
+    thrust::device_ptr<uint32_t> d_out_mpep_unrank_th(d_out_mpep_unrank);
    
     thrust::device_ptr<const uint32_t> d_pep_idx_th(d_pep_idx);
     thrust::device_ptr<const uint32_t> d_pep_num_mpep_th(d_pep_num_mpep);
@@ -357,7 +359,7 @@ genModCands
     //
     uint32_t sum_mod_ma_count = thrust::reduce(d_mod_ma_count_th, d_mod_ma_count_th + mod_num_ma);
     //
-    thrust::device_vector<uint32_t> d_out_mpep_unrank(total*sum_mod_ma_count);
+    //thrust::device_vector<uint32_t> d_out_mpep_unrank_th(total*sum_mod_ma_count);
     //
     // Add an unrank to each mpep.
     // call kernel to each mpep + mpep_rank combination
@@ -365,7 +367,7 @@ genModCands
     thrust::counting_iterator<uint32_t> first(0);
     thrust::counting_iterator<uint32_t> last = first + total;
     thrust::for_each(first, last, add_mpep_unrank<uint32_t>(
-                        d_out_mpep_unrank.data(), 
+                        d_out_mpep_unrank_th, 
                         d_pep_ma_num_comb_scan_th,
                         d_out_mpep_rank_th,
                         d_mpep_rank_ith_pep_th.data(),
@@ -382,10 +384,10 @@ genModCands
     std::cout << std::endl;
 
     // print
-    std::cout << "d_out_mpep_urank" << std::endl;
+    std::cout << "d_out_mpep_unrank" << std::endl;
     for (uint32_t i = 0; i < total; i++) {
         for (uint32_t j = 0; j < sum_mod_ma_count; ++j) {
-            std::cout << d_out_mpep_unrank[i*sum_mod_ma_count + j] << " " ;
+            std::cout << d_out_mpep_unrank_th[i*sum_mod_ma_count + j] << " " ;
         }
         std::cout << std::endl;
     }

@@ -50,7 +50,7 @@ import Debug.Trace
 type CandidatesByMass = (Int, DevicePtr Word32)
 type CandidatesByMod  = (Int, DevicePtr Word32, DevicePtr Word32)
 type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32)
-type PepMod = (Int, DevicePtr Word8, DevicePtr Word8)
+type PepMod = (Int, DevicePtr Word8, DevicePtr Word8, Int)
 type IonSeries  = DevicePtr Word32
 
 --------------------------------------------------------------------------------
@@ -65,16 +65,19 @@ searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO M
 searchForMatches cp sdb ddb ms2 =
   filterCandidateByMass cp ddb mass                                   $ \candidatesByMass ->
   CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->     -- modifable acid
-  CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->     -- number of the acid to modify
-  filterCandidateByModability cp ddb candidatesByMass (mod_num_ma, d_mod_ma, d_mod_ma_count) $ \candidatesByMassMod ->
-  genModCandidates cp ddb candidatesByMassMod (mod_num_ma, d_mod_ma, d_mod_ma_count) $ \modifiedCandidates ->
-  mkModSpecXCorr ddb (mod_num_ma, d_mod_ma, d_mod_ma_count) modifiedCandidates (ms2charge ms2) (G.length spec) $ \mspecThry   ->
+  CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
+  let mod = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count) in
+  filterCandidateByModability cp ddb candidatesByMass mod $ \candidatesByMassMod ->
+  genModCandidates cp ddb candidatesByMassMod mod $ \modifiedCandidates ->
+  mkModSpecXCorr ddb mod modifiedCandidates (ms2charge ms2) (G.length spec) $ \mspecThry   ->
   mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec) $ \specThry   ->
   mapMaybe finish `fmap` sequestXC cp candidatesByMass spec specThry
   where
     ma            = map c2w ['S','A'] 
     ma_count      = [3,1]
-    mod_num_ma = length ma
+    sum_ma_count  = fromIntegral $ sum ma_count
+    mod_num_ma    = length ma
+
     spec          = sequestXCorr cp ms2
     peaks         = extractPeaks spec
 
@@ -115,7 +118,7 @@ filterCandidateByModability ::
                     -> PepMod               
                     -> (CandidatesByMod -> IO b)
                     -> IO b
-filterCandidateByModability cp db (sub_nIdx, d_sub_idx) (mod_num_ma, d_mod_ma, d_mod_ma_count) action =
+filterCandidateByModability cp db (sub_nIdx, d_sub_idx) (mod_num_ma, d_mod_ma, d_mod_ma_count, _) action =
   CUDA.allocaArray sub_nIdx             $ \d_idx      ->     -- filtered results to be returned here
   CUDA.allocaArray (sub_nIdx*mod_num_ma)      $ \d_pep_ma_count -> -- peptide ma counts
   CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_mod_ma d_mod_ma_count mod_num_ma >>= \n -> 
@@ -136,17 +139,18 @@ genModCandidates :: ConfigParams
                  -> PepMod
                  -> (ModCandidates -> IO b)
                  -> IO b
-genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma, d_mod_ma_count) action =
+genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count) action =
   -- calc number of modified peps generated from each pep
   CUDA.allocaArray nPep $ \d_pep_num_mpep -> 
   CUDA.allocaArray (nPep*mod_num_ma) $ \d_pep_ma_num_comb -> 
   CUDA.allocaArray (nPep*mod_num_ma) $ \d_pep_ma_num_comb_scan -> 
   CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma >>= \total -> 
   --action total
-  CUDA.allocaArray total $ \d_mpep_mcomb -> do
-  CUDA.allocaArray total $ \d_mpep_idx -> do
-      CUDA.genModCands d_mpep_idx d_mpep_mcomb total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma
-      action (total, d_mpep_idx, d_mpep_mcomb)
+  CUDA.allocaArray total                $ \d_mpep_rank -> 
+  CUDA.allocaArray (total*sum_ma_count) $ \d_mpep_unrank -> 
+  CUDA.allocaArray total                $ \d_mpep_idx -> do
+      CUDA.genModCands d_mpep_idx d_mpep_rank d_mpep_unrank total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma
+      action (total, d_mpep_idx, d_mpep_rank)
 
 mkModSpecXCorr :: DeviceSeqDB
                -> PepMod
@@ -155,7 +159,7 @@ mkModSpecXCorr :: DeviceSeqDB
                -> Int
                -> (IonSeries -> IO b)
                -> IO b
-mkModSpecXCorr db (mod_num_ma, d_mod_ma, d_mod_ma_count) (total, d_mpep_idx, d_mpep_mcomb) chrg len action =
+mkModSpecXCorr db (mod_num_ma, d_mod_ma, d_mod_ma_count,_) (total, d_mpep_idx, d_mpep_mcomb) chrg len action =
   CUDA.allocaArray n $ \d_mspec -> do
     let bytes = fromIntegral $ n * CUDA.sizeOfPtr d_mspec
     CUDA.memset  d_mspec bytes 0

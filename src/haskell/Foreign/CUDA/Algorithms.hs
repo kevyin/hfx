@@ -84,6 +84,7 @@ foreign import ccall unsafe "algorithms.h calcTotalModCands"
 
 genModCands :: DevicePtr Word32
             -> DevicePtr Word32
+            -> DevicePtr Word32
             -> Int
             -> DevicePtr Word32
             -> DevicePtr Word32
@@ -94,23 +95,23 @@ genModCands :: DevicePtr Word32
             -> DevicePtr Word8
             -> Int
             -> IO ()
-genModCands a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 =
+genModCands a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 =
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
-  --withDevicePtr a3 $ \a3' ->
-  --
-  withDevicePtr a4 $ \a4' ->
+  withDevicePtr a3 $ \a3' ->
+  --withDevicePtr a4 $ \a4' ->
   withDevicePtr a5 $ \a5' ->
   withDevicePtr a6 $ \a6' ->
   withDevicePtr a7 $ \a7' ->
-  --withDevicePtr a8 $ \a8' ->
-  withDevicePtr a9 $ \a9' ->
+  withDevicePtr a8 $ \a8' ->
+  --withDevicePtr a9 $ \a9' ->
   withDevicePtr a10 $ \a10' ->
-  --withDevicePtr a11 $ \a11' ->
-  genModCands'_ a1' a2' (cIntConv a3) a4' a5' a6' a7' (cIntConv a8) a9' a10' (cIntConv a11)
+  withDevicePtr a11 $ \a11' ->
+  --withDevicePtr a12 $ \a12' ->
+  genModCands'_ a1' a2' a3' (cIntConv a4) a5' a6' a7' a8' (cIntConv a9) a10' a11' (cIntConv a12)
 
 foreign import ccall unsafe "algorithms.h genModCands"
-  genModCands'_ :: Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word8 -> Word32 -> IO ()
+  genModCands'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word8 -> Word32 -> IO ()
 
 addModIons :: DevicePtr Word32 -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> DevicePtr Word32 -> Int -> DevicePtr Word8 -> DevicePtr Word8 -> Int -> Int -> Int -> IO ()
 addModIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 a11 a12 a13 a14 =

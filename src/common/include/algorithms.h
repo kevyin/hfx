@@ -117,7 +117,8 @@ void
 genModCands
 (
     uint32_t        *d_out_mpep_idx,
-    uint32_t        *d_out_mpep_mcomb,
+    uint32_t        *d_out_mpep_rank,
+    uint32_t        *d_out_mpep_unrank,
     const uint32_t  total,
 
     const uint32_t  *d_pep_idx,
