@@ -50,7 +50,7 @@ import Debug.Trace
 type CandidatesByMass = (Int, DevicePtr Word32)
 type CandidatesByMod  = (Int, DevicePtr Word32, DevicePtr Word32)
 type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32)
-type PepMod = (Int, DevicePtr Word8, DevicePtr Word8, Int)
+type PepMod = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float)
 type IonSeries  = DevicePtr Word32
 
 --------------------------------------------------------------------------------
@@ -64,9 +64,10 @@ type IonSeries  = DevicePtr Word32
 searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
 searchForMatches cp sdb ddb ms2 =
   filterCandidateByMass cp ddb mass                                   $ \candidatesByMass ->
-  CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->     -- modifable acid
+  CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->   -- modifable acid
   CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
-  let mod = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count) in
+  CUDA.withVector (U.fromList ma_mass)  $ \d_mod_ma_mass  ->   -- 
+  let mod = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, d_mod_ma_mass) in
   filterCandidateByModability cp ddb candidatesByMass mod $ \candidatesByMassMod ->
   genModCandidates cp ddb candidatesByMassMod mod $ \modifiedCandidates ->
   mkModSpecXCorr ddb mod modifiedCandidates (ms2charge ms2) (G.length spec) $ \mspecThry   ->
@@ -75,6 +76,7 @@ searchForMatches cp sdb ddb ms2 =
   where
     ma            = map c2w ['S','A'] 
     ma_count      = [3,1]
+    ma_mass       = [15.15,75.75]
     sum_ma_count  = fromIntegral $ sum ma_count
     mod_num_ma    = length ma
 
@@ -118,7 +120,7 @@ filterCandidateByModability ::
                     -> PepMod               
                     -> (CandidatesByMod -> IO b)
                     -> IO b
-filterCandidateByModability cp db (sub_nIdx, d_sub_idx) (mod_num_ma, d_mod_ma, d_mod_ma_count, _) action =
+filterCandidateByModability cp db (sub_nIdx, d_sub_idx) (mod_num_ma, d_mod_ma, d_mod_ma_count, _, _) action =
   CUDA.allocaArray sub_nIdx             $ \d_idx      ->     -- filtered results to be returned here
   CUDA.allocaArray (sub_nIdx*mod_num_ma)      $ \d_pep_ma_count -> -- peptide ma counts
   CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_mod_ma d_mod_ma_count mod_num_ma >>= \n -> 
@@ -139,7 +141,7 @@ genModCandidates :: ConfigParams
                  -> PepMod
                  -> (ModCandidates -> IO b)
                  -> IO b
-genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count) action =
+genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, _) action =
   -- calc number of modified peps generated from each pep
   CUDA.allocaArray nPep $ \d_pep_num_mpep -> 
   CUDA.allocaArray (nPep*mod_num_ma) $ \d_pep_ma_num_comb -> 
@@ -150,7 +152,7 @@ genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma,
   CUDA.allocaArray (total*sum_ma_count) $ \d_mpep_unrank -> 
   CUDA.allocaArray total                $ \d_mpep_idx -> do
       CUDA.genModCands d_mpep_idx d_mpep_rank d_mpep_unrank total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma
-      action (total, d_mpep_idx, d_mpep_rank)
+      action (total, d_mpep_idx, d_mpep_unrank)
 
 mkModSpecXCorr :: DeviceSeqDB
                -> PepMod
@@ -159,11 +161,11 @@ mkModSpecXCorr :: DeviceSeqDB
                -> Int
                -> (IonSeries -> IO b)
                -> IO b
-mkModSpecXCorr db (mod_num_ma, d_mod_ma, d_mod_ma_count,_) (total, d_mpep_idx, d_mpep_mcomb) chrg len action =
+mkModSpecXCorr db (mod_num_ma, d_mod_ma, d_mod_ma_count,_ , d_mod_ma_mass) (total, d_mpep_idx, d_mpep_unrank) chrg len action =
   CUDA.allocaArray n $ \d_mspec -> do
     let bytes = fromIntegral $ n * CUDA.sizeOfPtr d_mspec
     CUDA.memset  d_mspec bytes 0
-    CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_idx d_mpep_mcomb total d_mod_ma d_mod_ma_count mod_num_ma ch len
+    CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_idx d_mpep_unrank total d_mod_ma d_mod_ma_count d_mod_ma_mass mod_num_ma ch len
 
     action d_mspec
   where

@@ -142,10 +142,11 @@ void addModIons
     const uint32_t      *d_tc,
     const uint32_t      *d_tn,
     const uint32_t      *d_mpep_idx,
-    const uint32_t      *d_mpep_mcomb,
+    const uint32_t      *d_mpep_unrank,
     const uint32_t      num_mpep,
     const uint8_t       *d_mod_ma,
     const uint8_t       *d_mod_ma_count,
+    const float         *d_mod_ma_mass,
     const uint32_t      num_ma,
     const uint32_t      max_charge,
     const uint32_t      len_spec
