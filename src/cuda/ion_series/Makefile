@@ -8,7 +8,8 @@
 STATIC_LIB      := libion_series.a
 
 CUFILES_sm_11   := ion_series.cu \
-					mion_series.cu
+					mion_series.cu \
+					check_series.cu
 #CUFILES         := ion_series_inplace.cu
 
 EXTRALIBS       := stdc++

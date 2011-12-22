@@ -12,6 +12,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdint.h>
 
 /* Taken from NVIDIA CUDA C Programming Guide 4.0 : B.14.4
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 200)

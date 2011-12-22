@@ -8,19 +8,16 @@
 
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/device_vector.h>
+#include <thrust/inner_product.h>
 #include "utils.h"
 #include "device.h"
 #include "texture.h"
 #include "ion_series.h"
-#include "ion_series_utils.h"
 #include "algorithms.h"
 
 #include <stdint.h>
 
 #define DEBUG
-#ifdef DEBUG
-#include "check_series.h"
-#endif
 
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
@@ -143,7 +140,6 @@ getAAMass(const float *d_mass, const char aa)
 
 /*
  * Determine how much the modification shift the residual mass by
- * @TODO pre-computing and passing this by value would save computing this every time
  */
 float
 getModResDelta(const float *d_mod_ma_mass, const uint8_t *d_mod_ma_count, const uint32_t mod_num_ma) 
@@ -151,11 +147,13 @@ getModResDelta(const float *d_mod_ma_mass, const uint8_t *d_mod_ma_count, const 
     thrust::device_ptr<const float>   d_mod_ma_mass_th(d_mod_ma_mass);
     thrust::device_ptr<const uint8_t> d_mod_ma_count_th(d_mod_ma_count);
     float delta = 0;
-    for (uint32_t i = 0; i < mod_num_ma; ++i)
-    {
-        delta += d_mod_ma_mass_th[i]*d_mod_ma_count_th[i];
-    }
-    return delta;
+    //for (uint32_t i = 0; i < mod_num_ma; ++i)
+    //{
+        //delta += d_mod_ma_mass_th[i]*d_mod_ma_count_th[i];
+    //}
+    //return delta;
+    
+    return thrust::inner_product(d_mod_ma_mass_th, d_mod_ma_count_th, (float)0);
 }
 
 __device__ bool
@@ -251,8 +249,8 @@ addModIons_core
             // update ith mod counts to shared memory
             // and at the same time check if this acid is a ma
             bool is_ma = false;
-            uint32_t ma_idx;
-            uint32_t ith_ma;
+            uint32_t ma_idx; // defined only if is_ma is true
+            uint32_t ith_ma; // defined only if is_ma is true
             for (int mod = 0; mod < mod_num_ma; mod++) 
             {
                 uint32_t count = 0;
@@ -268,7 +266,7 @@ addModIons_core
                 
                 count = scan_warp<uint32_t, true>(count, s_pep_ith_ma[mod]); 
 
-                if (d_mod_ma[mod] == d_ions[j]) 
+                if (is_ma) 
                     ith_ma = count;
             }
 
@@ -388,12 +386,39 @@ void addModIons
     }
 
 #ifdef DEBUG
+    std::cout << "Checking generated spectrums" << std::endl;
     // To check the spectrums above, create these modified peptides serially and call addIons to create spectrums. Then compare the two spectrums
     // NB currently only allows 1 alternative mass for an acid. lowercase is used for the modified mass
-    //getSpecNonParallel(d_out_check_spec, 
-                     //d_residual, d_mass, d_ions, d_tc, d_tn, 
-                     //d_mpep_idx, d_mpep_unrank, num_mpep,
-                     //d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, delta);
+    thrust::device_vector<uint32_t> d_out_check_spec(len_spec*num_mpep);
+    getSpecNonParallel(d_out_check_spec.data().get(), 
+                     d_residual, d_mass, d_ions, d_tc, d_tn, 
+                     d_mpep_idx, d_mpep_unrank, num_mpep,
+                     d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, delta,
+                     max_charge, len_spec);
+
+    // compare
+    thrust::device_ptr<uint32_t> d_out_mspec_th(d_out_mspec);
+    if (!thrust::equal(d_out_check_spec.begin(), d_out_check_spec.end(), d_out_mspec_th)) {
+        std::cerr << "Spectrums doesn't seem to be correct" << std::endl;
+
+        uint32_t cnt = 0;
+        for (uint32_t i = 0; i < num_mpep; ++i) {
+            for (uint32_t j = 0; j < len_spec; ++j) {
+                uint32_t pos = i*len_spec + j;
+                if (d_out_check_spec[pos] != d_out_mspec_th[pos]) {
+                    //std::cout << "check " << d_out_check_spec[pos] << " != " << d_out_mspec_th[pos] << std::endl;
+                    ++cnt;
+                    break;
+                } else {
+                }
+
+            }
+        }
+        std::cout << "num specs not right: " << cnt << " out of " << num_mpep << std::endl;
+        exit(1);
+    } else {
+        std::cout << "spectrum seems ok" << std:: endl;
+    }
 #endif
 }
 
