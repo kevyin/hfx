@@ -115,11 +115,9 @@ getAAMass cp aa = aaMassTable cp U.! index ('A','Z') aa
 -- the list of non-option arguments, which is typically the list of input
 -- spectrum files to analyse.
 --
-sequestConfig :: FilePath -> [String] -> IO (ConfigParams, [String])
-sequestConfig fp argv = do
-    p  <- doesFileExist fp
-    cp <- if p then readConfigFile fp baseParams
-               else return baseParams
+sequestConfig :: [String] -> IO (ConfigParams, [String])
+sequestConfig argv = do
+    cp <- return baseParams
 
     --
     -- Parse the command line options

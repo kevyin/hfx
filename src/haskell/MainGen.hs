@@ -23,7 +23,7 @@ import qualified Data.Vector.Generic as G
 main :: IO ()
 main = do
   args   <- getArgs
-  (cp,f) <- sequestConfig "hfx.params" args
+  (cp,f) <- sequestConfig args
   let fp =  fromMaybe (error "Protein database not specified") (databasePath cp)
 
   db <- makeSeqDB cp fp

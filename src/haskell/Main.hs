@@ -41,8 +41,8 @@ import qualified Foreign.CUDA           as CUDA
 -- Program Defaults
 --------------------------------------------------------------------------------
 
-defaultConfigFile :: FilePath
-defaultConfigFile =  "hfx.params"
+--defaultConfigFile :: FilePath
+--defaultConfigFile =  "hfx.params"
 
 
 --------------------------------------------------------------------------------
@@ -51,7 +51,7 @@ defaultConfigFile =  "hfx.params"
 
 main :: IO ()
 main = do
-  (cp,dta) <- sequestConfig defaultConfigFile =<< getArgs
+  (cp,dta) <- sequestConfig =<< getArgs
   let fp   = fromMaybe (error "Protein database not specified") (databasePath cp)
 
   when (verbose cp && not (useCPU cp)) $ do
