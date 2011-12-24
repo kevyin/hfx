@@ -19,6 +19,10 @@
 
 #define DEBUG
 
+#ifdef DEBUG
+#define MAX_PEP_LEN 1000
+#endif
+
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
  * fashion, there is no need to synchronise in order to share data. The most
@@ -146,19 +150,20 @@ getModResDelta(const float *d_mod_ma_mass, const uint8_t *d_mod_ma_count, const 
 {
     thrust::device_ptr<const float>   d_mod_ma_mass_th(d_mod_ma_mass);
     thrust::device_ptr<const uint8_t> d_mod_ma_count_th(d_mod_ma_count);
-    float delta = 0;
+    //float delta = 0;
     //for (uint32_t i = 0; i < mod_num_ma; ++i)
     //{
         //delta += d_mod_ma_mass_th[i]*d_mod_ma_count_th[i];
     //}
     //return delta;
     
-    return thrust::inner_product(d_mod_ma_mass_th, d_mod_ma_count_th, (float)0);
+    return thrust::inner_product(d_mod_ma_mass_th, d_mod_ma_mass_th + mod_num_ma, d_mod_ma_count_th, (float)0);
 }
 
 __device__ bool
 isToBeModded(const uint32_t *d_mpep_unrank, const uint8_t *d_mod_ma_count, uint32_t ma_idx, uint32_t ith_ma)
 {
+    bool res = false;
     uint32_t unrank_idx = 0;
     for (uint32_t i = 0; i < ma_idx; ++i)
     {
@@ -168,9 +173,9 @@ isToBeModded(const uint32_t *d_mpep_unrank, const uint8_t *d_mod_ma_count, uint3
     for (uint32_t i = 0; i < d_mod_ma_count[ma_idx]; ++i)
     {
         if (d_mpep_unrank[unrank_idx + i] == ith_ma) 
-            return true;
+            res = true;
     }
-    return false;
+    return res;
 }
 
 
@@ -191,6 +196,7 @@ __global__ static void
 addModIons_core
 (
     uint32_t            *d_mspec,
+    uint8_t             *d_mions,
     const float         *d_residual,    // peptide residual mass
     const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
     const uint8_t       *d_ions,        // individual ion character codes (the database)
@@ -204,7 +210,8 @@ addModIons_core
     const float         *d_mod_ma_mass,
     const uint32_t      mod_num_ma,
     const uint32_t      len_spec,
-    const float         mass_delta
+    const float         mass_delta,
+    const uint32_t      total_ma_count
 )
 {
     assert(BlockSize % WARP_SIZE == 0);
@@ -218,11 +225,12 @@ addModIons_core
     __shared__ volatile float s_data[BlockSize];
     // Keep a record of ith moddable acid as the pep is traversed
     __shared__ volatile uint32_t s_pep_ith_ma[MAX_MA][BlockSize];
+    //__shared__ volatile uint32_t s_test[BlockSize];
 
 
     for (uint32_t row = vector_id; row < num_mpep; row += numVectors)
     {
-        const uint32_t mpep_idx       = d_mpep_idx[row];
+        const uint32_t mpep_idx  = d_mpep_idx[row];
         const uint32_t row_start = d_tc[mpep_idx];
         const uint32_t row_end   = d_tn[mpep_idx];
         const float    residual  = d_residual[mpep_idx] + mass_delta;
@@ -231,7 +239,9 @@ addModIons_core
         float          b_mass;
         float          y_mass;
 
+
         s_data[threadIdx.x]      = 0;
+        //s_test[threadIdx.x]      = 0;
         for (int mod = 0; mod < mod_num_ma; mod++)
         {
             s_pep_ith_ma[mod][threadIdx.x] = 0;
@@ -243,40 +253,44 @@ addModIons_core
          */
         for (uint32_t j = row_start + thread_lane; j < row_end; j += WARP_SIZE)
         {
+            bool is_ma = false;
+            uint32_t ma_idx = 0;
             /*
              * Load the ion mass, and propagate the partial scan results
              */
-            // update ith mod counts to shared memory
-            // and at the same time check if this acid is a ma
-            bool is_ma = false;
-            uint32_t ma_idx; // defined only if is_ma is true
-            uint32_t ith_ma; // defined only if is_ma is true
-            for (int mod = 0; mod < mod_num_ma; mod++) 
+            // is this a modable acid
+            for (int m = 0; m < mod_num_ma; m++) 
             {
                 uint32_t count = 0;
-                if (d_mod_ma[mod] == d_ions[j]) 
+                if (d_mod_ma[m] == d_ions[j]) 
                 {
                     is_ma = true;
-                    ma_idx = mod;
-                    count++;
+                    count = 1;
+                    ma_idx = m;
                 }
 
-                if (thread_lane == 0)
-                    count += s_pep_ith_ma[mod][threadIdx.x + (WARP_SIZE-1)];
-                
-                count = scan_warp<uint32_t, true>(count, s_pep_ith_ma[mod]); 
-
-                if (is_ma) 
-                    ith_ma = count;
+                if (thread_lane == 0) {
+                    count += s_pep_ith_ma[m][threadIdx.x + (WARP_SIZE-1)];
+                    //count += s_test[threadIdx.x + (WARP_SIZE-1)];
+                }
+                scan_warp<uint32_t, true>(count, s_pep_ith_ma[m]); 
             }
 
-            if (is_ma && isToBeModded(d_mpep_unrank, d_mod_ma_count, ma_idx, ith_ma))
+            uint32_t ith_ma = s_pep_ith_ma[ma_idx][threadIdx.x] - 1;
+
+            //if (is_ma)
+            bool modded = isToBeModded(d_mpep_unrank + row*total_ma_count, d_mod_ma_count, ma_idx, ith_ma);
+
+            if (is_ma && modded)
             {
-                //b_mass = getModifiedAAMass<UseCache>(d_mod_ma_mass, d_ions[j]);
                 b_mass = getAAMass<UseCache>(d_mass, d_ions[j]) + d_mod_ma_mass[ma_idx];
+                d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j] + 32;
             } else {
                 b_mass = getAAMass<UseCache>(d_mass, d_ions[j]);
+                d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j];
             }
+            d_mions[row*MAX_PEP_LEN + j - row_start] = (uint8_t)(((int)'0')+(ith_ma));
+                
 
             if (thread_lane == 0)
             {
@@ -316,6 +330,7 @@ static void
 addModIons_dispatch
 (
     uint32_t            *d_mspec,
+    uint8_t             *d_mions,
     const float         *d_residual,
     const float         *d_mass,
     const uint8_t       *d_ions,
@@ -329,7 +344,8 @@ addModIons_dispatch
     const float         *d_mod_ma_mass,
     const uint32_t      mod_num_ma,
     const uint32_t      len_spec,
-    const float         mass_delta
+    const float         mass_delta,
+    const uint32_t      total_ma_count
 )
 {
     uint32_t blocks;
@@ -341,11 +357,11 @@ addModIons_dispatch
     addModIons_control(num_mpep, blocks, threads);
     switch (threads)
     {
-    //case 512: addModIons_core<512,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx,, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, len_spec); break;
-    //case 256: addModIons_core<256,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx,, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, len_spec); break;
-    case 128: addModIons_core<128,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta); break;
-    case  64: addModIons_core< 64,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta); break;
-    case  32: addModIons_core< 32,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta); break;
+    //case 512: addModIons_core<512,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx,, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, len_spec, mass_delta, total_ma_count); break;
+    //case 256: addModIons_core<256,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx,, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, len_spec, mass_delta, total_ma_count); break;
+    case 128: addModIons_core<128,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
+    case  64: addModIons_core< 64,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
+    case  32: addModIons_core< 32,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
     default:
         assert(!"Non-exhaustive patterns in match");
     }
@@ -373,24 +389,31 @@ void addModIons
     const uint32_t      len_spec
 )
 {
+    thrust::device_vector<uint8_t> d_mions(MAX_PEP_LEN*num_mpep);
 
     float delta = getModResDelta(d_mod_ma_mass, d_mod_ma_count, mod_num_ma);
+
+    thrust::device_ptr<const uint8_t> d_mod_ma_count_th(d_mod_ma_count);
+    const uint32_t total_ma_count = thrust::reduce(d_mod_ma_count_th, d_mod_ma_count_th + mod_num_ma);
+
     switch (max_charge)
     {
-    case 1: addModIons_dispatch<1,true>(d_out_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta); break;
-    case 2: addModIons_dispatch<2,true>(d_out_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta); break;
-    case 3: addModIons_dispatch<3,true>(d_out_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta); break;
-    case 4: addModIons_dispatch<4,true>(d_out_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta); break;
+    case 1: addModIons_dispatch<1,true>(d_out_mspec,  d_mions.data().get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
+    case 2: addModIons_dispatch<2,true>(d_out_mspec, d_mions.data().get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
+    case 3: addModIons_dispatch<3,true>(d_out_mspec, d_mions.data().get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
+    case 4: addModIons_dispatch<4,true>(d_out_mspec, d_mions.data().get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
     default:
         assert(!"Non-exhaustive patterns in match");
     }
 
 #ifdef DEBUG
     std::cout << "Checking generated spectrums" << std::endl;
+    std::cout << "delta was: " << delta << std::endl;
     // To check the spectrums above, create these modified peptides serially and call addIons to create spectrums. Then compare the two spectrums
     // NB currently only allows 1 alternative mass for an acid. lowercase is used for the modified mass
     thrust::device_vector<uint32_t> d_out_check_spec(len_spec*num_mpep);
-    getSpecNonParallel(d_out_check_spec.data().get(), 
+    getSpecNonParallel(d_out_check_spec.data().get(),
+                     d_mions.data().get(),
                      d_residual, d_mass, d_ions, d_tc, d_tn, 
                      d_mpep_idx, d_mpep_unrank, num_mpep,
                      d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, delta,
@@ -420,5 +443,7 @@ void addModIons
         std::cout << "spectrum seems ok" << std:: endl;
     }
 #endif
+#undef DEBUG
+
 }
 

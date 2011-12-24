@@ -7,6 +7,8 @@
 
 #include <stdint.h>
 
+#define DEBUG
+
 /*
  * to lower
  */
@@ -71,7 +73,7 @@ genMIons
         if (isMa) {
             // first record this finding and determine the ith 
             // occurrence of this ma
-            uint32_t ith_ma = (++cur_pep_ma_count[ma_idx]);
+            uint32_t ith_ma = (cur_pep_ma_count[ma_idx]++);
             
             // check if this ma is to be modded according to unrank
             // first find the start to the relevant section of unrank
@@ -79,13 +81,17 @@ genMIons
             for (uint32_t k = 0; k < ma_idx; k++) {
                 unrank_idx += h_mod_ma_count[k];                
             }
+            bool modded = false;
             // check through unrank to see if the ith_ma is to be modded
-            for (uint32_t l = 0; l < h_mod_ma_count[l]; l++) {
+            for (uint32_t l = 0; l < h_mod_ma_count[ma_idx]; l++) {
                 if (ith_ma == unrank[unrank_idx + l]) {
                     mions.push_back(toLower(acid));
+                    modded = true;
                     break;
                 }
             }
+            if (!modded)
+                mions.push_back(acid);
         } else {
             mions.push_back(acid);
         }
@@ -96,6 +102,7 @@ genMIons
 void
 getSpecNonParallel(
     uint32_t            *d_out_check_spec, 
+    const uint8_t       *d_in_mions, 
     const float         *d_residual_raw, 
     const float         *d_mass_raw, 
     const uint8_t       *d_ions_raw, 
@@ -159,7 +166,15 @@ getSpecNonParallel(
         std::vector<uint32_t> unrank(total_ma);
         thrust::copy(d_mpep_unrank + (i * total_ma), d_mpep_unrank + ((i+1) * total_ma), unrank.begin());
 
+        for (std::vector<uint32_t>::iterator it = unrank.begin(); it != unrank.end(); it++) {
+            std::cout << *it << " " ;
+        }
+        std::cout << " | ";
         std::vector<uint8_t> mions = genMIons(ions, unrank, h_mod_ma, h_mod_ma_count);
+        for (std::vector<uint8_t>::iterator it = mions.begin(); it != mions.end(); it++) {
+            std::cout << *it << " " ;
+        }
+        std::cout << std::endl;
         h_mions.insert(h_mions.end(), mions.begin(), mions.end());
         
         // add tc and tn's
@@ -182,7 +197,7 @@ getSpecNonParallel(
     thrust::device_vector<float>  d_check_mass(58);       // for ascii A to z
     thrust::copy(d_mass, d_mass + 26, d_check_mass.begin());
     for (uint32_t i = 0; i < mod_num_ma; ++i) {
-        d_check_mass[toLower(d_mod_ma[i]) - 'A'] = d_mod_ma_mass[i] + d_mass[d_mod_ma[i] - 'A'];
+        d_check_mass[toLower(d_mod_ma[i]) - 'A'] = d_mass[d_mod_ma[i] - 'A'] + d_mod_ma_mass[i];
     }
     // d_check_ions      amino acid chars. modified acid mass is lower case
     thrust::device_vector<uint8_t>  d_check_ions(h_mions.begin(), h_mions.end());
@@ -199,6 +214,7 @@ getSpecNonParallel(
 
 
     ////////////////////////////////////////////////////////////////
+#ifdef DEBUG
     // DEBUG check the arrays
     // print some things
     std::cout << "mod_num_ma " << mod_num_ma << std::endl;
@@ -210,19 +226,49 @@ getSpecNonParallel(
     std::cout << "checking residuals" << std::endl;
     for (uint32_t i = 0; i < num_mpep; ++i) {
         float p_mass = (d_residual[d_mpep_idx[i]] + res_delta);
-        std::cerr << "orig " << d_residual[d_mpep_idx[i]] << std::endl;
-        std::cerr << "p_mass " << p_mass << std::endl;
-        std::cerr << "s_mass " << d_check_residual[i] << std::endl;
+        //std::cerr << "orig " << d_residual[d_mpep_idx[i]] << std::endl;
+        //std::cerr << "p_mass " << p_mass << std::endl;
+        //std::cerr << "s_mass " << d_check_residual[i] << std::endl;
         if (d_check_residual[i] != p_mass ){
             std::cerr << "orig " << d_residual_raw[d_mpep_idx[i]] << std::endl;
             std::cerr << d_check_residual[i] << " != " << p_mass << std::endl;
+            exit(1);
         }
     }
     
     // d_mass
-    for (uint8_t i = 0; i < ('z' - 'A'); ++i) {
-        std::cout << "d_mass " << static_cast<char>(i + 'A') << d_check_mass[i] << std::endl;
+    for (uint8_t i = 'a'; i <= 'z'; ++i) {
+        std::cout << "d_mass " << i << " " << d_check_mass[i - 'A'] << std::endl;
     }
+
+    // d_check_ions      amino acid chars. modified acid mass is lower case
+    thrust::device_ptr<const uint8_t> d_in_mions_th(d_in_mions);
+#ifdef DEBUG
+#define MAX_PEP_LEN 1000
+#endif
+    for (uint32_t i = 0; i < num_mpep; i++) {
+
+        std::cout << "d_check_idx " << d_check_idx[i] << std::endl;
+        uint32_t ch_c_idx = d_check_tc[i];
+        uint32_t ch_n_idx = d_check_tn[i];
+
+        std::cout << "check c " << ch_c_idx << " n " << ch_n_idx << std::endl;
+
+        std::cout << "modded check ";
+        for (uint32_t j = ch_c_idx; j < ch_n_idx; ++j) {
+            std::cout << d_check_ions[j] << " ";
+        }
+        std::cout << std::endl;
+
+        std::cout << "mion in_mion ";
+        for (uint32_t j = 0; j < ch_n_idx - ch_c_idx; ++j) {
+            std::cout << d_in_mions_th[i*MAX_PEP_LEN + j] << " ";
+        }
+        std::cout << std::endl;
+    }
+#endif
+#undef DEBUG
+    ////////////////////////////////////////////////////////////////
 
     ////////////////////////////////////////////////////////////////
     // call addions 

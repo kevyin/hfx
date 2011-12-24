@@ -17,7 +17,7 @@ extern "C" {
 #endif
 
 // Maximum modable aa's
-#define MAX_MA  10
+#define MAX_MA  3
 
 #if 0
 /*
@@ -155,6 +155,7 @@ void addModIons
 void
 getSpecNonParallel(
     uint32_t            *d_out_check_spec, 
+    const uint8_t       *d_in_mions, 
     const float         *d_residual_raw, 
     const float         *d_mass_raw, 
     const uint8_t       *d_ions_raw, 
