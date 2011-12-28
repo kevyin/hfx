@@ -243,9 +243,7 @@ getSpecNonParallel(
 
     // d_check_ions      amino acid chars. modified acid mass is lower case
     thrust::device_ptr<const uint8_t> d_in_mions_th(d_in_mions);
-#ifdef DEBUG
 #define MAX_PEP_LEN 1000
-#endif
     for (uint32_t i = 0; i < num_mpep; i++) {
 
         std::cout << "d_check_idx " << d_check_idx[i] << std::endl;
@@ -267,7 +265,6 @@ getSpecNonParallel(
         std::cout << std::endl;
     }
 #endif
-#undef DEBUG
     ////////////////////////////////////////////////////////////////
 
     ////////////////////////////////////////////////////////////////
@@ -283,3 +280,4 @@ getSpecNonParallel(
             max_charge,
             len_spec);
 }
+#undef DEBUG

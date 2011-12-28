@@ -222,10 +222,11 @@ addModIons_core
     const uint32_t vector_id       = thread_id / WARP_SIZE;
     const uint32_t thread_lane     = threadIdx.x & (WARP_SIZE-1);
 
+    assert(MAX_MA >= ma_length);
+
     __shared__ volatile float s_data[BlockSize];
     // Keep a record of ith moddable acid as the pep is traversed
     __shared__ volatile uint32_t s_pep_ith_ma[MAX_MA][BlockSize];
-    //__shared__ volatile uint32_t s_test[BlockSize];
 
 
     for (uint32_t row = vector_id; row < num_mpep; row += numVectors)
@@ -284,12 +285,18 @@ addModIons_core
             if (is_ma && modded)
             {
                 b_mass = getAAMass<UseCache>(d_mass, d_ions[j]) + d_mod_ma_mass[ma_idx];
+#ifdef DEBUG
                 d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j] + 32;
+#endif
             } else {
                 b_mass = getAAMass<UseCache>(d_mass, d_ions[j]);
+#ifdef DEBUG
                 d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j];
+#endif
             }
-            d_mions[row*MAX_PEP_LEN + j - row_start] = (uint8_t)(((int)'0')+(ith_ma));
+#ifdef DEBUG
+            //d_mions[row*MAX_PEP_LEN + j - row_start] = (uint8_t)(((int)'0')+(ith_ma));
+#endif
                 
 
             if (thread_lane == 0)
@@ -389,7 +396,13 @@ void addModIons
     const uint32_t      len_spec
 )
 {
-    thrust::device_vector<uint8_t> d_mions(MAX_PEP_LEN*num_mpep);
+
+#ifdef DEBUG
+    thrust::device_vector<uint8_t> d_mions_v(MAX_PEP_LEN*num_mpep);
+    thrust::device_ptr<uint8_t> d_mions(d_mions_v.data());
+#else
+    thrust::device_ptr<uint8_t> d_mions;
+#endif
 
     float delta = getModResDelta(d_mod_ma_mass, d_mod_ma_count, mod_num_ma);
 
@@ -398,10 +411,10 @@ void addModIons
 
     switch (max_charge)
     {
-    case 1: addModIons_dispatch<1,true>(d_out_mspec,  d_mions.data().get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
-    case 2: addModIons_dispatch<2,true>(d_out_mspec, d_mions.data().get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
-    case 3: addModIons_dispatch<3,true>(d_out_mspec, d_mions.data().get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
-    case 4: addModIons_dispatch<4,true>(d_out_mspec, d_mions.data().get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
+    case 1: addModIons_dispatch<1,true>(d_out_mspec,  d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
+    case 2: addModIons_dispatch<2,true>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
+    case 3: addModIons_dispatch<3,true>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
+    case 4: addModIons_dispatch<4,true>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
     default:
         assert(!"Non-exhaustive patterns in match");
     }
@@ -413,7 +426,7 @@ void addModIons
     // NB currently only allows 1 alternative mass for an acid. lowercase is used for the modified mass
     thrust::device_vector<uint32_t> d_out_check_spec(len_spec*num_mpep);
     getSpecNonParallel(d_out_check_spec.data().get(),
-                     d_mions.data().get(),
+                     d_mions.get(),
                      d_residual, d_mass, d_ions, d_tc, d_tn, 
                      d_mpep_idx, d_mpep_unrank, num_mpep,
                      d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, delta,
@@ -443,7 +456,7 @@ void addModIons
         std::cout << "spectrum seems ok" << std:: endl;
     }
 #endif
-#undef DEBUG
 
 }
 
+#undef DEBUG

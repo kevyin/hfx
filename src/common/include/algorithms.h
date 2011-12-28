@@ -17,7 +17,7 @@ extern "C" {
 #endif
 
 // Maximum modable aa's
-#define MAX_MA  3
+#define MAX_MA  5
 
 #if 0
 /*
@@ -152,28 +152,6 @@ void addModIons
     const uint32_t      len_spec
 );
 
-void
-getSpecNonParallel(
-    uint32_t            *d_out_check_spec, 
-    const uint8_t       *d_in_mions, 
-    const float         *d_residual_raw, 
-    const float         *d_mass_raw, 
-    const uint8_t       *d_ions_raw, 
-    const uint32_t      *d_tc_raw,
-    const uint32_t      *d_tn_raw,
-    const uint32_t      *d_mpep_idx_raw,
-    const uint32_t      *d_mpep_unrank_raw,
-    const uint32_t      num_mpep,
-    const uint8_t       *d_mod_ma_raw,
-    const uint8_t       *d_mod_ma_count_raw,
-    const float         *d_mod_ma_mass_raw,
-    const uint32_t      mod_num_ma,
-    const float         res_delta,
-
-    const uint32_t      max_charge,
-    const uint32_t      len_spec
-    
-);
 
 /*
  * Generate theoretical spectra
@@ -215,6 +193,30 @@ addIons_inplace
  */
 void mvm_if(float *d_y, const uint32_t *d_A, const float *d_x, const uint32_t m, const uint32_t n);
 
+// Non Parallel
+
+void
+getSpecNonParallel(
+    uint32_t            *d_out_check_spec, 
+    const uint8_t       *d_in_mions, 
+    const float         *d_residual_raw, 
+    const float         *d_mass_raw, 
+    const uint8_t       *d_ions_raw, 
+    const uint32_t      *d_tc_raw,
+    const uint32_t      *d_tn_raw,
+    const uint32_t      *d_mpep_idx_raw,
+    const uint32_t      *d_mpep_unrank_raw,
+    const uint32_t      num_mpep,
+    const uint8_t       *d_mod_ma_raw,
+    const uint8_t       *d_mod_ma_count_raw,
+    const float         *d_mod_ma_mass_raw,
+    const uint32_t      mod_num_ma,
+    const float         res_delta,
+
+    const uint32_t      max_charge,
+    const uint32_t      len_spec
+    
+);
 
 #ifdef __cplusplus
 }

@@ -30,7 +30,7 @@ choose(const uint32_t n, const uint32_t k)
     return t;
 }
 
-__device__ uint32_t 
+__host__ __device__ uint32_t 
 largestV(const uint32_t a, const uint32_t b, const uint32_t x) {
     uint32_t v = a - 1;
     while (choose(v, b) > x)
@@ -42,7 +42,7 @@ largestV(const uint32_t a, const uint32_t b, const uint32_t x) {
 /*
  * ans should be of length k
  */
-__device__ void
+__host__ __device__ void
 unrankComb (uint32_t *ans, const uint32_t n, const uint32_t k, const uint32_t rank) {
     //vector<uint32_t> ans(k);
 

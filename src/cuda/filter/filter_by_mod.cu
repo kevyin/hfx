@@ -18,6 +18,7 @@
 #include <thrust/device_vector.h>
 #include "algorithms.h"
 
+#define DEBUG
 
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
@@ -65,7 +66,6 @@ findModablePeptides_core
 (
     uint32_t            *d_valid,
     uint32_t            *d_pep_ma_count,    // 2d array, count of each ma in each peptide
-    size_t              pitch,
 
     const uint8_t       *d_ions,
     const uint32_t      *d_tc,
@@ -93,7 +93,6 @@ findModablePeptides_core
     // Keep a count for each mod
     __shared__ volatile uint32_t s_data[MAX_MA][BlockSize];
 
-    // for each peptide
     for (uint32_t row = vector_id; row < sub_idx_length; row += numVectors)
     {
         const uint32_t idx       = d_sub_idx[row];
@@ -105,13 +104,11 @@ findModablePeptides_core
             s_data[mod][threadIdx.x] = 0;
         }
 
-
-        // for each amino acid
+        // for each acid check if this is a modable acid, if so record the count
         for (uint32_t j = row_start + thread_lane; j < row_end; j += WARP_SIZE)
         {
             bool isModable = true; // assume modability
-            // for each modable amino acid
-            for (int mod = 0; mod < ma_length && isModable; mod++) 
+            for (int mod = 0; mod < ma_length; mod++) 
             {
                 uint32_t count = 0;
                 if (d_ma[mod] == d_ions[j])
@@ -123,29 +120,22 @@ findModablePeptides_core
                 count = scan_warp<uint32_t, true>(count, s_data[mod]); 
 
                 if (j == row_end-1) { // last aa in peptide
-                    if (count < d_ma_count[mod]) // check if not enough aa for mod
+                    if (count >= d_ma_count[mod]) // check if not enough aa for mod
                     {
-                        // definitely not modable
-                        isModable = false;
-                    } else {
-                        // may still be modable
-                        isModable = true;
+                        //isModable = true;
                         // record pep aa counts
-                        // flattened version
+                        // for flattened array
                         d_pep_ma_count[row*ma_length + mod] = count;
-
-                        // pitch version
-                        // required as d_valid is allocated using cudaMallocPitch 
-                        /*uint32_t* d_valid_ptr = (uint32_t*)((char*)d_valid + row * pitch);*/
-                        /*d_valid_ptr[mod] = count;*/
-                        // record validity
+                    } else {
+                        isModable = false;
                     }
                 }
             }
+
             if (j == row_end-1) // last aa
             {
-                // @TODO ??
-                // if modable, calculate and record total number of modified peptides else 0
+                // @TODO ?? if modable, calculate and record total number of modified peptides else 0
+                //       ?? requires choose function so may not be best place to do it?
                 d_valid[row] = (isModable) ? 1 : 0;
             }
         }
@@ -180,16 +170,24 @@ struct greaterThan : public thrust::unary_function<T,bool>
 };
 
 /**
- * allows expansion into matrix
+ * fillMatrixRow
+ * Used with in conjunction with transform
+ * Fills a matrix where values of a row are taken from rowValues
+ * eg row values: [3, 4, 2]
+ * matrix:
+ * 3, 3, 3, 3, ...
+ * 4, 4, 4, 4, ...
+ * 2, 2, 2, 2, ...
  */
 template <typename T>
-struct expandValid: public thrust::unary_function<uint32_t,T>
+struct fillMatrixRow: public thrust::unary_function<uint32_t,T>
 {
 
     thrust::device_ptr<T> rowValues;
     uint32_t width;
+
     __host__ __device__
-    expandValid(thrust::device_ptr<T> _values, uint32_t _w) : rowValues(_values), width(_w) {}
+    fillMatrixRow(thrust::device_ptr<T> _values, uint32_t _w) : rowValues(_values), width(_w) {}
 
     __host__ __device__ bool operator() (uint32_t e)
     {
@@ -197,55 +195,114 @@ struct expandValid: public thrust::unary_function<uint32_t,T>
     }
 };
 
+#ifdef DEBUG
+/**
+ * checkFindModablePeptides
+ * check the function and compare with serial methods
+ * @TODO
+ */
 bool
 checkFindModablePeptides
 (
-    const uint32_t      sub_idx_length,
-    thrust::device_ptr<const uint32_t>  d_valid,
-    const uint32_t      ma_length,
-    thrust::device_ptr<const uint32_t>  d_pep_ma_count,
-    const uint32_t numValid,
-    thrust::device_ptr<uint32_t>        d_out_valid,
-    thrust::device_ptr<uint32_t>        d_out_pep_ma_count
+    const uint8_t                   *d_ions,
+    const uint32_t                  *d_tc,
+    const uint32_t                  *d_tn,
+
+    const uint32_t                  *d_sub_idx,
+    const uint32_t                  sub_idx_length,
+
+    const uint8_t                   *d_ma,
+    const uint8_t                   *d_ma_count,
+    const uint32_t                  ma_length,
+
+    const uint32_t                  out_numValid,
+    thrust::device_ptr<uint32_t>    d_out_valid,
+    thrust::device_ptr<uint32_t>    d_out_pep_ma_count
 
 )
 {
-    // print before compaction
-    /*std::cout << "pitch " << pitch << std::endl;*/
-    std::cout << "Printing before compaction." << std::endl;
+    std::cout << "checkFindModablePeptides" << std::endl;
 
-    for(int i = 0; i < sub_idx_length; i++) {
-        std::cout << "d_valid " << d_valid[i] << std::endl;
-        std::cout << "d_pep_ma_count ";
-        for (int j = 0; j < ma_length; j++) {
-            std::cout << d_pep_ma_count[i*ma_length + j] << " ";
-        }
-        std::cout << std::endl;
-    }
+    thrust::device_ptr<const uint8_t> d_ions_th(d_ions);
+    thrust::device_ptr<const uint32_t> d_tc_th(d_tc);
+    thrust::device_ptr<const uint32_t> d_tn_th(d_tn);
 
-    /*std::cout << "Printing results." << std::endl;*/
-    /*for(int r = 0; r < sub_idx_length; r++) {*/
+    thrust::device_ptr<const uint32_t> d_sub_idx_th(d_sub_idx);
+    thrust::device_ptr<const uint8_t> d_ma_th(d_ma);
+    thrust::device_ptr<const uint8_t> d_ma_count_th(d_ma_count);
+
     
-        /*thrust::device_ptr<uint32_t> v_ptr((uint32_t*)((char*)d_valid_raw + r * pitch));*/
-        /*thrust::host_vector<uint32_t> val(v_ptr, v_ptr + ma_length);*/
-        /*for (int c = 0; c < ma_length; c++) {*/
-            /*std::cout << "d_valid " << c << "| " << val[c] << ' ';*/
-        /*}*/
-        /*std::cout << std::endl;*/
-    /*}*/
+    // filterByModNonParallel
+    thrust::host_vector<uint32_t> h_check_valid;
+    thrust::host_vector<uint32_t> h_check_pep_ma_count;
+    for (uint32_t p = 0; p < sub_idx_length; ++p) {
+        thrust::host_vector<uint32_t> ma_counts(ma_length);
+        uint32_t p_idx = d_sub_idx_th[p];
 
-    // print d_out_valid after compaction
-    std::cout << "Printing after compact" << std::endl;
-    for(int i = 0; i < numValid; i++) {
-        std::cout << "d_out_valid " << d_out_valid[i] << std::endl;
-        for (int j = 0; j < ma_length; j++) {
-            std::cout << d_out_pep_ma_count[i*ma_length + j] << " ";
+        // count the ma's in the peptide
+        for (uint32_t a = d_tc_th[p_idx]; a < d_tn_th[p_idx]; ++a) {
+            uint8_t acid = d_ions_th[a];
+
+            for (uint32_t ma = 0; ma < ma_length; ++ma) {
+                if (d_ma_th[ma] == acid) {
+                    ++ma_counts[ma];
+                    break;
+                }
+            }
         }
-        std::cout << std::endl;
-    }
-    return false;
-}
 
+        bool modable = true;
+        for (uint32_t ma = 0; ma < ma_length && modable; ++ma) {
+            if (ma_counts[ma] < d_ma_count_th[ma]) {
+                modable = false;
+            }
+        }
+
+        if (modable) {
+            h_check_valid.push_back(p_idx);    
+            h_check_pep_ma_count.insert(h_check_pep_ma_count.end(), ma_counts.begin(), ma_counts.end());
+        }
+    }
+
+    std::cout << "comparing check and out arrays" << std::endl;
+    thrust::device_vector<uint32_t> d_check_valid = h_check_valid;
+    thrust::device_vector<uint32_t> d_check_pep_ma_count = h_check_pep_ma_count;
+    if (h_check_valid.size() != out_numValid || 
+        !thrust::equal(d_out_valid, d_out_valid + out_numValid, d_check_valid.begin()) ||
+        !thrust::equal(d_out_pep_ma_count, d_out_pep_ma_count + out_numValid*ma_length, d_check_pep_ma_count.begin())) {
+        std::cerr << "_valid and/or pep_ma_count doesn't seem to be correct" << std::endl;
+
+        // print d_out_valid after compaction
+        std::cout << "Printing out_valid" << std::endl;
+        for(int i = 0; i < out_numValid; i++) {
+            std::cout << "d_out_valid " << d_out_valid[i] << std::endl;
+            for (int j = 0; j < ma_length; j++) {
+                std::cout << d_out_pep_ma_count[i*ma_length + j] << " ";
+            }
+            std::cout << std::endl;
+        }
+        std::cout << "Printing check_valid" << std::endl;
+        for(int i = 0; i < h_check_valid.size(); i++) {
+            std::cout << "h_check_valid " << h_check_valid[i] << std::endl;
+            for (int j = 0; j < ma_length; j++) {
+                std::cout << h_check_pep_ma_count[i*ma_length + j] << " ";
+            }
+            std::cout << std::endl;
+        }
+        exit(1);
+        //return false
+    }
+    
+    std::cout << "filter by mod seems ok" << std::endl;
+    return true;
+}
+#endif
+
+/**
+ * findModablePeptides
+ * Check that for peptides which have enough of the appropriate acids to apply a modification
+ * record those that are valid and the number of each modable acid in the peptide
+ */ 
 uint32_t
 findModablePeptides
 (
@@ -266,13 +323,13 @@ findModablePeptides
 {
     uint32_t            threads;
     uint32_t            blocks;
-    uint32_t            *d_valid_raw;
-    uint32_t            *d_pep_ma_count_raw; 
-    size_t              pitch = 0;//not used atm
+    //uint32_t            *d_valid_raw;               // not compacted of above
+    //uint32_t            *d_pep_ma_count_raw;        // not compacted of above
 
-    CUDA_SAFE_CALL( cudaMalloc((void**) &d_valid_raw, sub_idx_length* sizeof(uint32_t)) );
-    CUDA_SAFE_CALL( cudaMalloc((void**) &d_pep_ma_count_raw, ma_length*sub_idx_length* sizeof(uint32_t)) );
-    /*CUDA_SAFE_CALL( cudaMallocPitch(&count, &pitch, ma_length*sizeof(uint32_t), sub_idx_length) );*/
+    //CUDA_SAFE_CALL( cudaMalloc((void**) &d_valid_raw, sub_idx_length* sizeof(uint32_t)) );
+    //CUDA_SAFE_CALL( cudaMalloc((void**) &d_pep_ma_count_raw, ma_length*sub_idx_length* sizeof(uint32_t)) );
+    thrust::device_vector<uint32_t> d_valid_v(sub_idx_length);
+    thrust::device_vector<uint32_t> d_pep_ma_count_v(sub_idx_length);
 
     // control
     findByMod_control(sub_idx_length, blocks, threads);
@@ -280,33 +337,32 @@ findModablePeptides
     // core
     switch (threads)
     {
-    case 128: findModablePeptides_core<128><<<blocks, threads>>>(d_valid_raw, d_pep_ma_count_raw, pitch, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case  64: findModablePeptides_core< 64><<<blocks, threads>>>(d_valid_raw, d_pep_ma_count_raw, pitch, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case  32: findModablePeptides_core< 32><<<blocks, threads>>>(d_valid_raw, d_pep_ma_count_raw, pitch, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
+    case 128: findModablePeptides_core<128><<<blocks, threads>>>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
+    case  64: findModablePeptides_core< 64><<<blocks, threads>>>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
+    case  32: findModablePeptides_core< 32><<<blocks, threads>>>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
     }
 
     // compact
-    /*uint32_t N;*/
-    /*N = compactIndices((uint32_t*)  d_out, d_valid, sub_idx_length);*/
-
-    thrust::device_ptr<const uint32_t>  d_valid(d_valid_raw);
+    
+    // compact : prepare
+    thrust::device_ptr<const uint32_t>  d_valid(d_valid_v.data().get());
     thrust::device_ptr<uint32_t>        d_out_valid(d_out_valid_raw);
 
-    thrust::device_ptr<const uint32_t>  d_pep_ma_count(d_pep_ma_count_raw);
+    thrust::device_ptr<const uint32_t>  d_pep_ma_count(d_pep_ma_count_v.data().get());
     thrust::device_ptr<uint32_t>        d_out_pep_ma_count(d_out_pep_ma_count_raw);
 
    
-    // d_valid
-    // copy if d_valid[i] > 0
+    // compact : d_valid
+    // copy into d_out_ if d_valid[i] > 0
     thrust::device_ptr<const uint32_t> d_sub_idx_th(d_sub_idx); 
     thrust::device_ptr<uint32_t> d_out_valid_end =
         thrust::copy_if(d_sub_idx_th, d_sub_idx_th + sub_idx_length, d_valid, d_out_valid, greaterThan<const uint32_t>(0));
 
     const uint32_t numValid = d_out_valid_end - d_out_valid;
 
-    // d_pep_ma_count
-    // First expand d_valid to a flattened 2d matrix ie same length as d_pep_ma_count
-    // eg for ma_length 3 from [1,1,0,1] to
+    // compact : d_pep_ma_count
+    // First expand d_valid to a 2d matrix ie same length as d_pep_ma_count
+    // eg for ma_length 3 and d_valid [1,1,0,1] to
     // [1,1,1,
     //  1,1,1,
     //  0,0,0,
@@ -317,16 +373,24 @@ findModablePeptides
     thrust::counting_iterator<uint32_t> last = first + N;
     thrust::device_vector<uint32_t> d_valid_padded_th(N);
 
-    thrust::transform(first, last, d_valid_padded_th.begin(), expandValid<const uint32_t>(d_valid, ma_length));  
+    thrust::transform(first, last, d_valid_padded_th.begin(), fillMatrixRow<const uint32_t>(d_valid, ma_length));  
     
     thrust::device_ptr<uint32_t> d_out_pep_ma_count_end =
         thrust::copy_if(d_pep_ma_count, d_pep_ma_count + N, d_valid_padded_th.begin(), d_out_pep_ma_count, greaterThan<const uint32_t>(0));
 
-    checkFindModablePeptides(sub_idx_length, d_valid, ma_length, d_pep_ma_count, numValid, d_out_valid, d_out_pep_ma_count);
-
-    cudaFree(d_valid_raw);
-    cudaFree(d_pep_ma_count_raw);
-    /*cudaMemcpy(&h_total, (d_rtotal + num_nIdx -1), sizeof(uint32_t), cudaMemcpyDeviceToHost);*/
+#ifdef DEBUG
+    checkFindModablePeptides(d_ions,
+                             d_tc,
+                             d_tn,
+                             d_sub_idx,
+                             sub_idx_length,
+                             d_ma,
+                             d_ma_count,
+                             ma_length,
+                             numValid,
+                             d_out_valid,
+                             d_out_pep_ma_count);
+#endif
 
     return numValid;
 }

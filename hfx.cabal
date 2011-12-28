@@ -60,7 +60,7 @@ Executable hfx
   if flag(debug)
     extra-libraries:   filterD ion_seriesD mvmD sortD
   else
-    extra-libraries:   filter  ion_series  mvm  sort genModPep
+    extra-libraries:   filter  ion_series  mvm  sort gen_mod_pep
 
   -- Modules not exported by this package.
   -- Other-modules:

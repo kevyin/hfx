@@ -5,9 +5,9 @@
 # ------------------------------------------------------------------------------
 # Input files
 # ------------------------------------------------------------------------------
-STATIC_LIB      := libgenModPep.a
+STATIC_LIB      := libgen_mod_pep.a
 
-CUFILES         := genModPep.cu 
+CUFILES         := gen_mod_pep.cu 
 
 EXTRALIBS       := stdc++
 

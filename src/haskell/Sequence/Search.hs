@@ -75,7 +75,7 @@ searchForMatches cp sdb ddb ms2 =
   mapMaybe finish `fmap` sequestXC cp candidatesByMass spec specThry
   where
     ma            = map c2w ['S','A'] 
-    ma_count      = [3,1]
+    ma_count      = [1,1]
     ma_mass       = [15.15,75.75]
     sum_ma_count  = fromIntegral $ sum ma_count
     mod_num_ma    = length ma
@@ -123,10 +123,11 @@ filterCandidateByModability ::
 filterCandidateByModability cp db (sub_nIdx, d_sub_idx) (mod_num_ma, d_mod_ma, d_mod_ma_count, _, _) action =
   CUDA.allocaArray sub_nIdx             $ \d_idx      ->     -- filtered results to be returned here
   CUDA.allocaArray (sub_nIdx*mod_num_ma)      $ \d_pep_ma_count -> -- peptide ma counts
-  CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_mod_ma d_mod_ma_count mod_num_ma >>= \n -> 
-    traceShow ("num peptides searched", sub_nIdx) $
-    traceShow ("num modable", n) $
-    traceShow ("pep_ma_count not used ", mod_num_ma*(sub_nIdx - n)) $ 
+  CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_mod_ma d_mod_ma_count mod_num_ma >>= \n -> do
+    when (verbose cp) $ hPutStrLn stderr ("filter by modability:\n" ++ 
+                                          "num searched: " ++ show sub_nIdx ++ "\n" ++
+                                          "num modable: " ++ show n ++ "\n" ++
+                                          "pep_ma_count not used: " ++ show (mod_num_ma*(sub_nIdx - n)) ++ "\n") 
     action (n, d_idx, d_pep_ma_count)
   --CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-delta) (mass+delta) >>= \n -> action (d_idx,n)
 
