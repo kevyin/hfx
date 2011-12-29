@@ -68,15 +68,15 @@ searchForMatches cp sdb ddb ms2 =
   CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
   CUDA.withVector (U.fromList ma_mass)  $ \d_mod_ma_mass  ->   -- 
   let mod = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, d_mod_ma_mass) in
-  filterCandidateByModability cp ddb candidatesByMass mod $ \candidatesByMassMod ->
-  genModCandidates cp ddb candidatesByMassMod mod $ \modifiedCandidates ->
+  filterCandidateByModability cp ddb candidatesByMass mod                   $ \candidatesByMassMod ->
+  genModCandidates cp ddb candidatesByMassMod mod                           $ \modifiedCandidates ->
   mkModSpecXCorr ddb mod modifiedCandidates (ms2charge ms2) (G.length spec) $ \mspecThry   ->
-  mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec) $ \specThry   ->
+  mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)          $ \specThry   ->
   mapMaybe finish `fmap` sequestXC cp candidatesByMass spec specThry
   where
     ma            = map c2w ['S','A'] 
     ma_count      = [1,1]
-    ma_mass       = [15.15,75.75]
+    ma_mass       = [15.15,-75.75]
     sum_ma_count  = fromIntegral $ sum ma_count
     mod_num_ma    = length ma
 

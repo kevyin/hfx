@@ -123,6 +123,10 @@
 
 #define DEBUG
 
+/**
+ * returns num_mpep (number of modified peptides) for a peptide
+ * used for checking and comparison
+ */
 template <typename T>
 struct calcNumModCand : public thrust::unary_function<T, uint32_t>
 {
@@ -149,6 +153,10 @@ struct calcNumModCand : public thrust::unary_function<T, uint32_t>
     }
 };
 
+/**
+ * return pep_ma_num_comb
+ * the number of combinations each modable acid can make in a peptide
+ */
 template <typename T>
 struct calcNumCombPerAcid: public thrust::unary_function<T, uint32_t>
 {
@@ -173,12 +181,16 @@ struct calcNumCombPerAcid: public thrust::unary_function<T, uint32_t>
     }
 };
 
+/**
+ * find num_mpep per peptide
+ * at the same time fill pep_ma_num_comb_scan
+ */
 template <typename T>
 struct calcNumMPepPerPep: public thrust::unary_function<T, uint32_t>
 {
 
+    thrust::device_ptr<uint32_t>        d_out_pep_ma_num_comb_scan;
     thrust::device_ptr<const uint32_t>  d_pep_ma_num_comb;
-    thrust::device_ptr<uint32_t>        d_pep_ma_num_comb_scan;
     const uint32_t                      mod_num_ma;
 
     __host__ __device__
@@ -186,7 +198,7 @@ struct calcNumMPepPerPep: public thrust::unary_function<T, uint32_t>
                       thrust::device_ptr<uint32_t>          _pep_ma_num_comb_scan,
                       const uint32_t                        _mod_num_ma) : 
                       d_pep_ma_num_comb(_pep_ma_num_comb), 
-                      d_pep_ma_num_comb_scan(_pep_ma_num_comb_scan), 
+                      d_out_pep_ma_num_comb_scan(_pep_ma_num_comb_scan), 
                       mod_num_ma(_mod_num_ma) {}
 
     __host__ __device__ uint32_t operator() (T pep)
@@ -194,16 +206,15 @@ struct calcNumMPepPerPep: public thrust::unary_function<T, uint32_t>
         uint32_t pep_ma_num_comb_idx = pep * mod_num_ma;
 
         thrust::device_ptr<const uint32_t> pep_ma_num_comb_row(d_pep_ma_num_comb + pep_ma_num_comb_idx);
-        thrust::device_ptr<uint32_t>       pep_ma_num_comb_scan_row(d_pep_ma_num_comb_scan + pep_ma_num_comb_idx);
+        thrust::device_ptr<uint32_t>       pep_ma_num_comb_scan_row(d_out_pep_ma_num_comb_scan + pep_ma_num_comb_idx);
         uint32_t num = 1;
         //for (uint32_t i = 0; i < mod_num_ma; ++i) 
         for (int32_t i = mod_num_ma - 1; i >= 0; --i) 
         {
             num *= pep_ma_num_comb_row[i];
-            // raw
+            // record scan results
             uint32_t *tmp_raw = (pep_ma_num_comb_scan_row + i).get();
             *tmp_raw = num;
-            //pep_ma_num_comb_scan_row[i] = num;
         }
         return num;
     }
@@ -211,10 +222,10 @@ struct calcNumMPepPerPep: public thrust::unary_function<T, uint32_t>
 
 /**
  * Determine and record 
- * the number of modified peptides each peptide will generate
- * the number of combinations each ma within a peptide makes
- * the number of combinations each ma within a peptide makes scanned
- * return total modified candidates (excludes orig)
+ *   - the number of modified peptides each peptide will generate
+ *   - the number of combinations each ma within a peptide makes
+ *   - the number of combinations each ma within a peptide makes scanned
+ *     return total modified candidates (excludes orig)
  */
 uint32_t
 calcTotalModCands
@@ -230,6 +241,7 @@ calcTotalModCands
     const uint32_t    mod_num_ma
 ) 
 {
+    // initialise thrust ptrs
     thrust::device_ptr<uint32_t>        d_out_pep_num_mpep_th(d_out_pep_num_mpep);
     thrust::device_ptr<uint32_t>        d_out_pep_ma_num_comb_th(d_out_pep_ma_num_comb); 
     thrust::device_ptr<uint32_t>        d_out_pep_ma_num_comb_scan_th(d_out_pep_ma_num_comb_scan);
@@ -290,6 +302,10 @@ calcTotalModCands
     return total;
 }
 
+/**
+ * Given a mpep_rank 
+ * determine the modable acid ranks
+ */
 __host__ __device__ void
 add_ma_ranks 
 (
@@ -299,8 +315,6 @@ add_ma_ranks
     const uint32_t                      mod_num_ma
 )
 {
-    //thrust::device_vector<uint32_t> ma_ranks(mod_num_ma);
-    
     uint32_t *ma_ranks_raw = d_out_ma_ranks_row;
 
     uint32_t x = mpep_rank;
@@ -364,16 +378,14 @@ struct add_mpep_unrank: public thrust::unary_function<T, uint32_t>
     __host__ __device__ uint32_t operator() (T mpep)
     {
         uint32_t mpep_rank = d_mpep_rank[mpep];
-        uint32_t ith_pep  = d_mpep_rank_ith_pep[mpep];
-        // mpep_rank -> ma_ranks
-        //thrust::device_vector<uint32_t> d_ma_ranks(mod_num_ma);
+        uint32_t ith_pep   = d_mpep_rank_ith_pep[mpep];
+
         uint32_t d_ma_ranks[MAX_MA];
         add_ma_ranks(d_ma_ranks, mpep_rank, d_pep_ma_num_comb_scan + d_mpep_rank_ith_pep[mpep]*mod_num_ma, mod_num_ma);
 
         uint32_t unrank_pos = 0;
         
         // foreach ma, unrank and add to mpep_unrank
-        //add_mpep_unrank(d_out_mpep_unrank + mpep*sum_mod_ma_count);
         for (uint32_t i = 0; i < mod_num_ma; ++i)
         {
             unrankComb((d_out_mpep_unrank + mpep*sum_mod_ma_count + unrank_pos).get(), 

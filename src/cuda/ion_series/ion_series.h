@@ -25,4 +25,9 @@
 #define MASS_O          16.0013f
 #define MASS_H          1.0078246f
 
+/*
+ * ONLY used for checking
+ */
+#define MAX_PEP_LEN     1000
+
 #endif

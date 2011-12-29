@@ -19,10 +19,6 @@
 
 #define DEBUG
 
-#ifdef DEBUG
-#define MAX_PEP_LEN 1000
-#endif
-
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
  * fashion, there is no need to synchronise in order to share data. The most
@@ -196,7 +192,7 @@ __global__ static void
 addModIons_core
 (
     uint32_t            *d_mspec,
-    uint8_t             *d_mions,
+    uint8_t             *d_mions,       // For debugging, records ions in char form
     const float         *d_residual,    // peptide residual mass
     const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
     const uint8_t       *d_ions,        // individual ion character codes (the database)

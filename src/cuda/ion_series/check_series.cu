@@ -99,6 +99,10 @@ genMIons
     return mions;
 }
 
+/**
+ * Generate spectrums serially
+ * also 
+ */
 void
 getSpecNonParallel(
     uint32_t            *d_out_check_spec, 
@@ -243,7 +247,7 @@ getSpecNonParallel(
 
     // d_check_ions      amino acid chars. modified acid mass is lower case
     thrust::device_ptr<const uint8_t> d_in_mions_th(d_in_mions);
-#define MAX_PEP_LEN 1000
+
     for (uint32_t i = 0; i < num_mpep; i++) {
 
         std::cout << "d_check_idx " << d_check_idx[i] << std::endl;
@@ -252,13 +256,13 @@ getSpecNonParallel(
 
         std::cout << "check c " << ch_c_idx << " n " << ch_n_idx << std::endl;
 
-        std::cout << "modded check ";
+        std::cout << "modded check  ";
         for (uint32_t j = ch_c_idx; j < ch_n_idx; ++j) {
             std::cout << d_check_ions[j] << " ";
         }
         std::cout << std::endl;
 
-        std::cout << "mion in_mion ";
+        std::cout << "from parallel ";
         for (uint32_t j = 0; j < ch_n_idx - ch_c_idx; ++j) {
             std::cout << d_in_mions_th[i*MAX_PEP_LEN + j] << " ";
         }
