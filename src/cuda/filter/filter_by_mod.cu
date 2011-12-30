@@ -190,7 +190,8 @@ struct fillMatrixRow: public thrust::unary_function<uint32_t,T>
 
     __host__ __device__ bool operator() (uint32_t e)
     {
-        return rowValues[e/width];
+        uint32_t r = e/width;
+        return rowValues[r];
     }
 };
 
@@ -296,31 +297,46 @@ checkFindModablePeptides
     // comparison
     thrust::device_vector<uint32_t> d_check_valid = h_check_valid;
     thrust::device_vector<uint32_t> d_check_pep_ma_count = h_check_pep_ma_count;
-    if (h_check_valid.size() != out_numValid || 
-        !thrust::equal(d_out_valid, d_out_valid + out_numValid, d_check_valid.begin()) ||
-        !thrust::equal(d_out_pep_ma_count, d_out_pep_ma_count + out_numValid*ma_length, d_check_pep_ma_count.begin())) {
-        std::cerr << "_valid and/or pep_ma_count doesn't seem to be correct" << std::endl;
+    if (h_check_valid.size() != out_numValid) {
+        std::cout << "h_check_valid.size " << h_check_valid.size() << " != " << "out_numValid " << out_numValid << std::endl;
+        exit(1);
+    }
+     
+    if (!thrust::equal(d_out_valid, d_out_valid + out_numValid, d_check_valid.begin())) {
+        std::cout << "d_out_valid doesn't seem to be correct" << std::endl;
+        exit(1);
 
-        // print d_out_valid after compaction
-        std::cout << "Printing out_valid" << std::endl;
-        for(int i = 0; i < out_numValid; i++) {
-            std::cout << "d_out_valid " << d_out_valid[i] << std::endl;
-            for (int j = 0; j < ma_length; j++) {
-                std::cout << d_out_pep_ma_count[i*ma_length + j] << " ";
-            }
-            std::cout << std::endl;
-        }
-        std::cout << "Printing check_valid" << std::endl;
+    }
+
+    if (!thrust::equal(d_out_pep_ma_count, d_out_pep_ma_count + out_numValid*ma_length, d_check_pep_ma_count.begin())) {
+        std::cout << "d_out_pep_ma_count doesn't seem to be correct" << std::endl;
+        std::cout << "Printing check_valid and h_check_pep_ma_count" << std::endl;
         for(int i = 0; i < h_check_valid.size(); i++) {
             std::cout << "h_check_valid " << h_check_valid[i] << std::endl;
             for (int j = 0; j < ma_length; j++) {
-                std::cout << h_check_pep_ma_count[i*ma_length + j] << " ";
+                uint32_t check = h_check_pep_ma_count[i*ma_length + j];
+                uint32_t out   = d_out_pep_ma_count[i*ma_length + j];
+                if (check == out) 
+                    std::cout << check << " == " << out << " | ";
+                else
+                    std::cout << check << " != " << out << " OUT ERR" << " | ";               
+                uint32_t idx = h_check_valid[i];
+                printPeptide(idx, d_ions, d_tc, d_tn);
             }
             std::cout << std::endl;
         }
         exit(1);
-        //return false
     }
+
+        // print d_out_valid after compaction
+        //std::cout << "Printing out_valid" << std::endl;
+        //for(int i = 0; i < out_numValid; i++) {
+            //std::cout << "d_out_valid " << d_out_valid[i] << std::endl;
+            //for (int j = 0; j < ma_length; j++) {
+                //std::cout << d_out_pep_ma_count[i*ma_length + j] << " ";
+            //}
+            //std::cout << std::endl;
+        //}
     std::cout << "checking ok" << std::endl;
     return true;
 }
@@ -356,7 +372,7 @@ findModablePeptides
 
     // non compacted arrays
     thrust::device_vector<uint32_t> d_valid_v(sub_idx_length);
-    thrust::device_vector<uint32_t> d_pep_ma_count_v(sub_idx_length);
+    thrust::device_vector<uint32_t> d_pep_ma_count_v(sub_idx_length*ma_length);
 
     // control
     findByMod_control(sub_idx_length, blocks, threads);

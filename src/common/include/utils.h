@@ -13,6 +13,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <thrust/device_vector.h>
 
 /* Taken from NVIDIA CUDA C Programming Guide 4.0 : B.14.4
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 200)
@@ -123,6 +124,23 @@ floorPow2(unsigned int x)
     int exp;
     frexp((double)x, &exp);
     return 1 << (exp - 1);
+}
+
+inline
+void printPeptide(const uint32_t& idx, const uint8_t* d_ions_raw, const uint32_t* d_tc_raw, const uint32_t* d_tn_raw) {
+    thrust::device_ptr<const uint8_t>     d_ions(d_ions_raw);
+    thrust::device_ptr<const uint32_t>    d_tc(d_tc_raw);
+    thrust::device_ptr<const uint32_t>    d_tn(d_tn_raw);
+
+    uint32_t begin = d_tc[idx];
+    uint32_t end   = d_tn[idx];
+    for (uint32_t i = begin; i < end; ++i) {
+        uint8_t a = d_ions[i];
+        printf("%c ", a);
+    }
+    printf("\n");
+
+
 }
 
 #undef __asert

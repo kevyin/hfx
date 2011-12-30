@@ -4,10 +4,11 @@
 #include <thrust/set_operations.h>
 #include "algorithms.h"
 #include "utils.h"
+#include "ion_series.h"
 
 #include <stdint.h>
 
-#define DEBUG
+//#define DEBUG
 
 /*
  * to lower
@@ -170,15 +171,20 @@ getSpecNonParallel(
         std::vector<uint32_t> unrank(total_ma);
         thrust::copy(d_mpep_unrank + (i * total_ma), d_mpep_unrank + ((i+1) * total_ma), unrank.begin());
 
+#ifdef DEBUG
         for (std::vector<uint32_t>::iterator it = unrank.begin(); it != unrank.end(); it++) {
             std::cout << *it << " " ;
         }
         std::cout << " | ";
+#endif
         std::vector<uint8_t> mions = genMIons(ions, unrank, h_mod_ma, h_mod_ma_count);
+
+#ifdef DEBUG
         for (std::vector<uint8_t>::iterator it = mions.begin(); it != mions.end(); it++) {
             std::cout << *it << " " ;
         }
         std::cout << std::endl;
+#endif
         h_mions.insert(h_mions.end(), mions.begin(), mions.end());
         
         // add tc and tn's
