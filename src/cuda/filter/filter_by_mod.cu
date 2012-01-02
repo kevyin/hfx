@@ -421,6 +421,8 @@ findModablePeptides
         thrust::copy_if(d_pep_ma_count, d_pep_ma_count + N, d_valid_padded_th.begin(), d_out_pep_ma_count, greaterThan<const uint32_t>(0));
 
 #ifdef DEBUG
+    printGPUMemoryUsage();
+
     checkFindModablePeptides(d_ions, d_tc, d_tn,
                              d_sub_idx, sub_idx_length,
                              d_ma, d_ma_count, ma_length,

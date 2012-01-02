@@ -50,9 +50,9 @@ import Debug.Trace
 type CandidatesByMass = (Int, DevicePtr Word32)
 type CandidatesByMod  = (Int, DevicePtr Word32, DevicePtr Word32)
 type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32)
-type PepMod = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float)
 type IonSeries  = DevicePtr Word32
 
+type PepMod = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float)
 --------------------------------------------------------------------------------
 -- Search
 --------------------------------------------------------------------------------
@@ -64,22 +64,14 @@ type IonSeries  = DevicePtr Word32
 searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
 searchForMatches cp sdb ddb ms2 =
   filterCandidateByMass cp ddb mass                                   $ \candidatesByMass ->
-  CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->   -- modifable acid
-  CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
-  CUDA.withVector (U.fromList ma_mass)  $ \d_mod_ma_mass  ->   -- 
-  let mod = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, d_mod_ma_mass) in
-  filterCandidateByModability cp ddb candidatesByMass mod                   $ \candidatesByMassMod ->
-  genModCandidates cp ddb candidatesByMassMod mod                           $ \modifiedCandidates ->
-  mkModSpecXCorr ddb mod modifiedCandidates (ms2charge ms2) (G.length spec) $ \mspecThry   ->
-  mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)          $ \specThry   ->
+  mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)          $ \specThry   -> do
+  --searchAModComb cp sdb ddb ms2 modComb
+  _ <- searchWithModifications cp sdb ddb ms2 
   mapMaybe finish `fmap` sequestXC cp candidatesByMass spec specThry
   where
-    ma            = map c2w ['S','A'] 
-    ma_count      = [1,1]
-    ma_mass       = [15.15,-75.75]
-    sum_ma_count  = fromIntegral $ sum ma_count
-    mod_num_ma    = length ma
-
+    --modComb = (ma, ma_count, 1434.7175)
+    --ma = map c2w ['A','C']
+    --ma_count = [0,4]
     spec          = sequestXCorr cp ms2
     peaks         = extractPeaks spec
 
@@ -87,6 +79,68 @@ searchForMatches cp sdb ddb ms2 =
     sp            = matchIonSequence cp (ms2charge ms2) peaks
     mass          = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
 
+
+--
+--
+searchWithModifications :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO [MatchCollection]
+searchWithModifications cp sdb ddb ms2 = traceShow modCombs $
+  mapM (searchAModComb cp sdb ddb ms2) modCombs
+  where
+    max_mass      = 2000 -- @TODO
+    min_mass      = -2000 -- @TODO
+    max_ma          = 10  -- @TODO
+    ma = map c2w ['A','C']
+    ma_mass       = [15.15,-75.75] -- @TODO get this from config params
+    --ma_count = [2,1]
+    --modCombs = [(ma, ma_count, 1123.4)]
+    --[(['A'],[2],343.1)]
+    
+    modCombs  = filter (\(_,_,m) -> if min_mass <= m && m <= max_mass then True else False) $ mods_raw 
+    mods_raw  = map (\ma_cnt -> (ma, (map fromIntegral ma_cnt), mass + (calcDelta ma_cnt) )) ma_counts
+        where 
+        calcDelta ma_cnt = sum (zipWith (\c m -> m * fromIntegral c) ma_cnt ma_mass)
+    ma_counts  = filter (\c -> if sum c < max_ma then True else False) ma_counts'
+    ma_counts' = tail (addModDimensions ((length ma) - 1) [ replicate (length ma) 0 ])
+
+    addModDimensions :: Int -> [[Int]] -> [[Int]]
+    addModDimensions dim xs = 
+        if dim >= 0 then expand $ addModDimensions (dim-1) xs else xs
+        where
+        expand (c:cs) = [c] ++ map (\cnt -> replace dim cnt c) [1..max_ma] ++ expand cs
+        expand _      = []
+
+    replace :: (Show a) => Int -> a -> [a] -> [a]
+    replace idx val list = traceShow (idx, val, list) $ x ++ val : ys
+        where
+        (x,_:ys) = splitAt idx list
+
+    mass          = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
+
+
+    
+searchAModComb :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> ([Word8], [Word8], Float) -> IO MatchCollection
+searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) = traceShow ("searching mod comb", ma, ma_count, mod_mass) $ 
+  filterCandidateByMass cp ddb mod_mass                                     $ \candidatesByMass ->
+  CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->   -- modifable acid
+  CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
+  CUDA.withVector (U.fromList ma_mass)  $ \d_mod_ma_mass  ->   -- 
+  let d_mods = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, d_mod_ma_mass) in
+  filterCandidateByModability cp ddb candidatesByMass d_mods                    $ \candidatesByMassAndMod ->
+  genModCandidates cp ddb candidatesByMassAndMod d_mods                         $ \modifiedCandidates ->
+  mkModSpecXCorr ddb d_mods modifiedCandidates (ms2charge ms2) (G.length spec)  $ \mspecThry   ->
+  --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
+  --mapMaybe finish `fmap` sequestXC cp candidatesByMass spec mspecThry -- @TODO
+  return []
+  where
+    ma_mass       = [15.15,-75.75] -- @TODO get this from config params
+    sum_ma_count  = fromIntegral $ sum ma_count
+    mod_num_ma    = length ma
+    spec          = sequestXCorr cp ms2
+    peaks         = extractPeaks spec
+
+    finish (sx,i) = liftM (\f -> Match f sx (sp f)) (lookup sdb i)
+    sp            = matchIonSequence cp (ms2charge ms2) peaks
+    
 
 --
 -- Search the protein database for candidate peptides within the specified mass
