@@ -43,7 +43,7 @@ import qualified Data.Vector.Fusion.Stream.Size as S
 import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
 
-import Debug.Trace
+--import Debug.Trace
 
 #define PHASE_STREAM [1]
 #define PHASE_INNER  [0]
@@ -78,7 +78,7 @@ fraglabel = head . LC.words . fragheader
 --modFragData p u fd =
 
 modifyFragment :: PepMod -> [Int] -> Fragment -> Fragment
-modifyFragment pm unrank (Fragment fmass fheader fdata') = traceShow (fdata, modInfo,pm, unrank) $ Fragment newMass fheader newData 
+modifyFragment pm unrank (Fragment fmass fheader fdata') = Fragment newMass fheader newData 
   where
     fdata = LC.unpack fdata'
     newMass = fmass  + (sum $ map (\(_,c,m) -> (fromIntegral c) * m) pm) 

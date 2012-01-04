@@ -16,6 +16,13 @@ aa-mass-type            = Mono
 add_C                   = 57.0
 
 #
+# Variable amino acid modifications
+#
+max-modable-acids       = 25
+mod_M                   = 16
+mod_N                   = 29
+
+#
 # Results display
 #
 num-matches             = 20

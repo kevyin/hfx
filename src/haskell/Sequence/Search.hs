@@ -47,7 +47,7 @@ import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
 import qualified Foreign.CUDA.Algorithms        as CUDA
 
-import Debug.Trace
+--import Debug.Trace
 
 type CandidatesByMass = (Int, DevicePtr Word32)
 type CandidatesByMod  = (Int, DevicePtr Word32, DevicePtr Word32)
@@ -88,25 +88,24 @@ searchWithoutMods cp sdb ddb ms2 =
 --
 --
 searchWithMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
-searchWithMods cp sdb ddb ms2 = traceShow modCombs $ do
+searchWithMods cp sdb ddb ms2 = do
   matches <- mapM (searchAModComb cp sdb ddb ms2) modCombs
   
-  
-  traceShow ("max", max_mass) $ traceShow ("min", min_mass) $ return $ concat matches
+  return $ concat matches
   where
     comparedbFrag (res1,_,_) (res2,_,_) = compare res1 res2
     (max_mass,_,_)  = U.maximumBy comparedbFrag $ dbFrag sdb 
     (min_mass,_,_)  = U.minimumBy comparedbFrag $ dbFrag sdb 
-    max_ma          = 20  -- @TODO
-    ma = map c2w ['A','C']
-    ma_mass       = [15.15,-75.75] -- @TODO get this from config params
+    max_ma          = maxModableAcids cp
+    ma              = map c2w $ getMA cp
+    ma_mass         = getMA_Mass cp
     --ma_count = [2,1]
     --modCombs = [(ma, ma_count, 1123.4)]
     --[(['A'],[2],343.1)]
     
     -- @TODO generate using liftM
-    modCombs  = filter (\(_,_,m) -> if min_mass <= m && m <= max_mass then True else False) $ mods_raw 
-    mods_raw  = map (\ma_cnt -> (ma, (map fromIntegral ma_cnt), mass - (calcDelta ma_cnt) )) ma_counts
+    modCombs  = filter (\(_,_,m) -> if min_mass <= m && m <= max_mass then True else False) $ modCombs_raw 
+    modCombs_raw  = map (\ma_cnt -> (ma, (map fromIntegral ma_cnt), mass - (calcDelta ma_cnt) )) ma_counts
         where 
         calcDelta ma_cnt = sum (zipWith (\c m -> m * fromIntegral c) ma_cnt ma_mass)
     ma_counts  = filter (\c -> if sum c < max_ma then True else False) ma_counts'

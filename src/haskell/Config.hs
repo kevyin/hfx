@@ -13,7 +13,8 @@ module Config
   (
     ConfigParams(..),
     sequestConfig, readConfig,
-    getAAMass
+    getAAMass,
+    getVarMass, getMA, getMA_Mass
   )
   where
 
@@ -73,6 +74,12 @@ data ConfigParams = ConfigParams
     aaMassTypeMono      :: Bool,
 
     --
+    -- Variable modifications
+    --
+    maxModableAcids     :: Int,
+    variableMods        :: Vector Float,     -- mass table of variable modifications similar to aaMassTable
+
+    --
     -- Process configuration
     --
     useCPU              :: Bool,
@@ -100,11 +107,28 @@ data ConfigParams = ConfigParams
 --
 -- XXX: Shouldn't really live here...
 --
+
 {-# INLINE getAAMass #-}
 getAAMass :: ConfigParams -> Char -> Float
-getAAMass cp aa = aaMassTable cp U.! index ('A','Z') aa
+getAAMass cp aa = aaMassTable cp U.! aaIndex aa
 
+{-# INLINE getVarMass #-}
+getVarMass :: ConfigParams -> Char -> Float
+getVarMass cp aa = variableMods cp U.! aaIndex aa
 
+{-# INLINE aaIndex #-}
+aaIndex :: Char -> Int
+aaIndex aa 
+    | inRange ('A','Z') aa = index ('A','Z') aa
+    | otherwise            = error $ (show aa) ++ " not a valid acid symbol"
+
+{-# INLINE getMA #-}
+getMA :: ConfigParams -> [Char]
+getMA cp = filter (\c -> getVarMass cp c /= 0 ) ['A'..'Z']
+
+{-# INLINE getMA_Mass #-}
+getMA_Mass :: ConfigParams -> [Float]
+getMA_Mass cp = U.toList $ U.filter (\m -> m /= 0) $ variableMods cp
 --------------------------------------------------------------------------------
 -- Options Processing
 --------------------------------------------------------------------------------
@@ -166,15 +190,23 @@ readConfig opt fp cp = do
 -- immediately to the given configuration set, removing the command from the
 -- argument key/value list
 --
+-- Also searches for 'mod_x' and stores them in variableMods
+--
 processMods :: ConfigParams -> [(String, String)] -> (ConfigParams, [(String, String)])
 processMods config = foldr fn (config,[])
     where
         fn (k,v) (cp,acc) = case stripPrefix "add_" k of
-                              Nothing     -> (cp, (k,v) : acc)
+                              Nothing     -> case stripPrefix "mod_" k of
+                                                Nothing     -> (cp, (k,v) : acc) -- neither add_ or mod_, return args
+                                                Just (c:[]) -> (store cp c v, acc)
+                                                _           -> error ("Unrecognised variable modification: " ++ k)
                               Just (c:[]) -> (apply cp c v, acc)
-                              _           -> error ("Unrecognised modification: " ++ k)
+                              _           -> error ("Unrecognised static modification: " ++ k)
 
-        apply cp c v = cp { aaMassTable = aaMassTable cp U.// [(index ('A','Z') c, read v)] }
+        -- Apply static modifications to the mass table
+        apply cp c v = cp { aaMassTable = aaMassTable cp U.// [(aaIndex c, read v)] }
+        -- Store variable modifications for later use
+        store cp c v = cp { variableMods = variableMods cp U.// [(aaIndex c, read v)] }
 
 
 --------------------------------------------------------------------------------
@@ -198,6 +230,9 @@ baseParams =  ConfigParams
 
         aaMassTable         = U.replicate (rangeSize ('A','Z')) 0 U.// [(index ('A','Z') 'C',57.0)],
         aaMassTypeMono      = True,
+
+        maxModableAcids     = 20,
+        variableMods        = U.replicate (26) 0, -- 26 letters, ie [A-Z]
 
         useCPU              = False,
 
@@ -295,6 +330,14 @@ options =
 --    , Option "" ["cpu"]
 --        (NoArg (\cp -> return cp { useCPU = True }))
 --        "Use CPU backend"
+--
+    , Option "" ["max-modable-acids"]
+        (ReqArg (\v cp -> return cp { maxModableAcids = read v }) "INT")
+        "Maximum number of modable acids considered per peptide"
+
+    , Option "" ["mod_[A..Z]"]
+        (ReqArg (\_ cp -> return cp) "FLOAT")
+        "Variable modification mass to occurences of a residue"
 
     , Option "v" ["verbose"]
         (NoArg (\cp -> return cp { verbose = True }))
