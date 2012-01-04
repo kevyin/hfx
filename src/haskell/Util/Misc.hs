@@ -167,3 +167,8 @@ forceEitherStr :: Either String a -> a
 forceEitherStr (Left  e) = error e
 forceEitherStr (Right a) = a
 
+--
+-- sublist of a list
+--
+sublist :: Int -> Int -> [a] -> [a]
+sublist beg end ls = drop beg $ take end ls

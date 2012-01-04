@@ -120,9 +120,6 @@
 #include "algorithms.h"
 #include "combinatorics.h"
 
-
-#define DEBUG
-
 /**
  * returns num_mpep (number of modified peptides) for a peptide
  * used for checking and comparison
@@ -261,7 +258,7 @@ calcTotalModCands
     thrust::transform(first, last, d_out_pep_num_mpep_th, calcNumMPepPerPep<const uint32_t>(d_out_pep_ma_num_comb_th, d_out_pep_ma_num_comb_scan_th, mod_num_ma));
 
 
-#ifdef DEBUG
+#ifdef _DEBUG
     // compare with calcNumModCand method
     // malloc d_tmp
     thrust::device_ptr<uint32_t> d_tmp = thrust::device_malloc<uint32_t>(nPep);
@@ -486,7 +483,7 @@ genModCands
                         mod_num_ma,
                         sum_mod_ma_count)); 
 
-#ifdef DEBUG
+#ifdef _DEBUG
     std::cout << "checking genModCands" << std::endl;
 
     thrust::host_vector<uint32_t> h_check_mpep_unrank_th;
@@ -557,4 +554,3 @@ genModCands
     
 }
 
-#undef DEBUG

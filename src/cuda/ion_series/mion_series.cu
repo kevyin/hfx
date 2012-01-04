@@ -17,8 +17,6 @@
 
 #include <stdint.h>
 
-#define DEBUG
-
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
  * fashion, there is no need to synchronise in order to share data. The most
@@ -281,16 +279,16 @@ addModIons_core
             if (is_ma && modded)
             {
                 b_mass = getAAMass<UseCache>(d_mass, d_ions[j]) + d_mod_ma_mass[ma_idx];
-#ifdef DEBUG
+#ifdef _DEBUG
                 d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j] + 32;
 #endif
             } else {
                 b_mass = getAAMass<UseCache>(d_mass, d_ions[j]);
-#ifdef DEBUG
+#ifdef _DEBUG
                 d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j];
 #endif
             }
-#ifdef DEBUG
+#ifdef _DEBUG
             //d_mions[row*MAX_PEP_LEN + j - row_start] = (uint8_t)(((int)'0')+(ith_ma));
 #endif
                 
@@ -393,7 +391,7 @@ void addModIons
 )
 {
 
-#ifdef DEBUG
+#ifdef _DEBUG
     thrust::device_vector<uint8_t> d_mions_v(MAX_PEP_LEN*num_mpep);
     thrust::device_ptr<uint8_t> d_mions(d_mions_v.data());
 #else
@@ -415,7 +413,7 @@ void addModIons
         assert(!"Non-exhaustive patterns in match");
     }
 
-#ifdef DEBUG
+#ifdef _DEBUG
     std::cout << "Checking generated spectrums" << std::endl;
     std::cout << "delta was: " << delta << std::endl;
     // To check the spectrums above, create these modified peptides serially and call addIons to create spectrums. Then compare the two spectrums
@@ -454,5 +452,3 @@ void addModIons
 #endif
 
 }
-
-#undef DEBUG

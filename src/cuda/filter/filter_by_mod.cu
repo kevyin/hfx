@@ -16,8 +16,6 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/device_vector.h>
 
-#define DEBUG
-
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
  * fashion, there is no need to synchronise in order to share data. The most
@@ -195,7 +193,7 @@ struct fillMatrixRow: public thrust::unary_function<uint32_t,T>
     }
 };
 
-#ifdef DEBUG
+#ifdef _DEBUG
 
 /**
  * filterByModNonParallel
@@ -420,7 +418,7 @@ findModablePeptides
     thrust::device_ptr<uint32_t> d_out_pep_ma_count_end =
         thrust::copy_if(d_pep_ma_count, d_pep_ma_count + N, d_valid_padded_th.begin(), d_out_pep_ma_count, greaterThan<const uint32_t>(0));
 
-#ifdef DEBUG
+#ifdef _DEBUG
     printGPUMemoryUsage();
 
     checkFindModablePeptides(d_ions, d_tc, d_tn,

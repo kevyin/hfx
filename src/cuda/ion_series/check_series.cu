@@ -8,7 +8,6 @@
 
 #include <stdint.h>
 
-//#define DEBUG
 
 /*
  * to lower
@@ -171,7 +170,7 @@ getSpecNonParallel(
         std::vector<uint32_t> unrank(total_ma);
         thrust::copy(d_mpep_unrank + (i * total_ma), d_mpep_unrank + ((i+1) * total_ma), unrank.begin());
 
-#ifdef DEBUG
+#ifdef _DEBUG
         for (std::vector<uint32_t>::iterator it = unrank.begin(); it != unrank.end(); it++) {
             std::cout << *it << " " ;
         }
@@ -179,7 +178,7 @@ getSpecNonParallel(
 #endif
         std::vector<uint8_t> mions = genMIons(ions, unrank, h_mod_ma, h_mod_ma_count);
 
-#ifdef DEBUG
+#ifdef _DEBUG
         for (std::vector<uint8_t>::iterator it = mions.begin(); it != mions.end(); it++) {
             std::cout << *it << " " ;
         }
@@ -224,7 +223,7 @@ getSpecNonParallel(
 
 
     ////////////////////////////////////////////////////////////////
-#ifdef DEBUG
+#ifdef _DEBUG
     // DEBUG check the arrays
     // print some things
     std::cout << "mod_num_ma " << mod_num_ma << std::endl;
@@ -290,4 +289,3 @@ getSpecNonParallel(
             max_charge,
             len_spec);
 }
-#undef DEBUG

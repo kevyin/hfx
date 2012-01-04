@@ -143,6 +143,7 @@ void printPeptide(const uint32_t& idx, const uint8_t* d_ions_raw, const uint32_t
 
 }
 
+inline
 void printGPUMemoryUsage ()
 {
     // show memory usage of GPU

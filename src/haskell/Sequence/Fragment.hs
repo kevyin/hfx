@@ -12,7 +12,7 @@
 module Sequence.Fragment
   (
     SequenceDB(..), DeviceSeqDB(..), Fragment(..),
-    makeSeqDB, withDeviceDB, fraglabel
+    makeSeqDB, withDeviceDB, fraglabel, PepMod, modifyFragment
   )
   where
 
@@ -22,7 +22,7 @@ import Util.Misc
 import Sequence.Fasta
 
 import Prelude                                  hiding ( lookup )
-import Data.List                                ( unfoldr )
+import Data.List                                ( unfoldr, mapAccumL, findIndices )
 import Data.Word
 import Data.Binary
 import Data.Vector.Binary                       ()
@@ -43,12 +43,15 @@ import qualified Data.Vector.Fusion.Stream.Size as S
 import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
 
+import Debug.Trace
+
 #define PHASE_STREAM [1]
 #define PHASE_INNER  [0]
 
 #define INLINE_STREAM INLINE PHASE_STREAM
 #define INLINE_INNER  INLINE PHASE_INNER
 
+type PepMod = [(Char, Int, Float)]
 
 --------------------------------------------------------------------------------
 -- Sequence Fragments
@@ -67,6 +70,60 @@ data Fragment = Fragment
 --
 fraglabel :: Fragment -> L.ByteString
 fraglabel = head . LC.words . fragheader
+
+--
+-- fragdata modified 
+--
+--modFragData :: PepMod -> [Int] -> L.ByteString -> L.ByteString
+--modFragData p u fd =
+
+modifyFragment :: PepMod -> [Int] -> Fragment -> Fragment
+modifyFragment pm unrank (Fragment fmass fheader fdata') = traceShow (fdata, modInfo,pm, unrank) $ Fragment newMass fheader newData 
+  where
+    fdata = LC.unpack fdata'
+    newMass = fmass  + (sum $ map (\(_,c,m) -> (fromIntegral c) * m) pm) 
+    newData = LC.pack . modData 0  $ fdata
+
+    modData :: Int -> [Char] -> [Char]
+    modData i (x:xs) = if elem i modified
+                       then x : '*' : modData (i+1) xs
+                       else x : modData (i+1) xs
+    modData i _      = []
+
+    modInfo = snd $ mapAccumL (\u_idx (ma,cnt,_) -> (u_idx + cnt, (ma, cnt, sublist u_idx (u_idx+cnt) unrank))) 0 pm
+
+    modified = findModified modInfo :: [Int]
+
+    findModified (m@(ma,cnt,u):ms) = if cnt > 0
+                                     then (map (\ith -> occurences !! ith) u) ++ findModified ms
+                                     else findModified ms
+      where
+        occurences = findIndices ((==) ma) fdata 
+    findModified _ = []
+
+
+
+{-
+fragUpdate :: ConfigParams -> Fragment -> Int -> Int -> Float -> Fragment
+fragUpdate cp (Fragment m h d) mc mp mr = Fragment (mr + massH + massH2O) h (L.pack . modData 0 . L.unpack $ d)
+    where
+    modData :: Int -> [Word8] -> [Word8]
+    modData i (x:xs) = if elem i toApply
+                       then x : c2w '*' : modData (i+1) xs
+                       else x : modData (i+1) xs
+    modData i _      = []
+    
+    toApply = applyMod 0 mods
+    applyMod i (m:ms) = if (mp .&. (shift 1 i) /= 0)
+                        then m : applyMod (i+1) ms
+                        else applyMod (i+1) ms
+    applyMod i _    = []
+
+    mods = map fromIntegral $ L.findIndices test d
+    test w = if (inRange ('A','Z') (w2c w)) && (getVarMass cp (w2c w) /= 0)
+             then True
+             else False
+-}
 
 
 --------------------------------------------------------------------------------

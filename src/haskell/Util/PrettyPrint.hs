@@ -104,7 +104,7 @@ titleIon = map (B.vcat B.center2)
 
 
 toDoc :: Int -> Float -> Match -> [Doc]
-toDoc n s0 m@(Match frag sc _) =
+toDoc n s0 m@(Match frag sc _ p u) =
     [ space <> int n <> char '.'
     , float' (fragmass frag)
     , float' (realToFrac ((s0 - sc)/s0))
@@ -117,7 +117,7 @@ toDoc n s0 m@(Match frag sc _) =
           sp     = scoreSP m
 
 toDocDetail :: Int -> Match -> B.Box
-toDocDetail n (Match frag _ _) = B.hsep 2 B.top
+toDocDetail n (Match frag _ _ _ _) = B.hsep 2 B.top
     [ B.alignHoriz B.right 3 $ B.text (shows n ".")
     , B.para B.left cols     $ L.unpack (fragheader frag)
     ]
@@ -125,7 +125,7 @@ toDocDetail n (Match frag _ _) = B.hsep 2 B.top
         cols = 95       -- for a total width of 100 columns
 
 toIonDetail :: ConfigParams -> Match -> [B.Box]
-toIonDetail cp (Match f _ (b,y)) = map (B.vcat B.right)
+toIonDetail cp (Match f _ (b,y) _ _) = map (B.vcat B.right)
     [ map B.char (L.unpack pep)
     , map (B.text . show) [1 .. L.length pep]
     , map showIon (zip ladder b) ++ ["-     "]

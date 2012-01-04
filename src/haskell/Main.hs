@@ -101,7 +101,7 @@ search cp db dev fp =
       printConfig cp fp ms2
       printResults           $! take (numMatches cp)       matches
       printResultsDetail     $! take (numMatchesDetail cp) matches
-      printIonMatchDetail cp $! take (numMatchesIon cp)    matches
+      --printIonMatchDetail cp $! take (numMatchesIon cp)    matches
   `catch`
   \(e :: SomeException) -> hPutStrLn stderr $ unlines
           [ "file:   " ++ fp

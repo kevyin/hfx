@@ -31,9 +31,11 @@ import Sequence.Fragment
 import Sequence.Location
 import Sequence.IonSeries
 import Util.Misc
+import Util.C2HS
 
 import Data.Word
 import Data.Maybe
+import Data.List                                hiding (lookup)
 import Control.Monad
 import System.IO
 import Prelude                                  hiding (lookup)
@@ -52,7 +54,7 @@ type CandidatesByMod  = (Int, DevicePtr Word32, DevicePtr Word32)
 type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32)
 type IonSeries  = DevicePtr Word32
 
-type PepMod = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float)
+type PepModDevice = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float)
 --------------------------------------------------------------------------------
 -- Search
 --------------------------------------------------------------------------------
@@ -62,11 +64,15 @@ type PepMod = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float)
 -- given experimental spectrum.
 --
 searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
-searchForMatches cp sdb ddb ms2 =
+searchForMatches cp sdb ddb ms2 = do
+  matches <- searchWithoutMods cp sdb ddb ms2 
+  matchesMods <- searchWithMods cp sdb ddb ms2 
+  return $ reverse $ sortBy matchScoreOrder $ matches ++ matchesMods
+
+searchWithoutMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
+searchWithoutMods cp sdb ddb ms2 =
   filterCandidateByMass cp ddb mass                                   $ \candidatesByMass ->
   mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)          $ \specThry   -> do
-  --searchAModComb cp sdb ddb ms2 modComb
-  _ <- searchWithModifications cp sdb ddb ms2 
   mapMaybe finish `fmap` sequestXC cp candidatesByMass spec specThry
   where
     --modComb = (ma, ma_count, 1434.7175)
@@ -75,17 +81,18 @@ searchForMatches cp sdb ddb ms2 =
     spec          = sequestXCorr cp ms2
     peaks         = extractPeaks spec
 
-    finish (sx,i) = liftM (\f -> Match f sx (sp f)) (lookup sdb i)
+    finish (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)
     sp            = matchIonSequence cp (ms2charge ms2) peaks
     mass          = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
 
-
 --
 --
-searchWithModifications :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO [MatchCollection]
-searchWithModifications cp sdb ddb ms2 = traceShow modCombs $
-  mapM (searchAModComb cp sdb ddb ms2) modCombs
+searchWithMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
+searchWithMods cp sdb ddb ms2 = traceShow modCombs $ do
+  matches <- mapM (searchAModComb cp sdb ddb ms2) modCombs
+  return $ concat matches
   where
+    -- @TODO generate using liftM
     max_mass      = 2000 -- @TODO
     min_mass      = -2000 -- @TODO
     max_ma          = 10  -- @TODO
@@ -96,7 +103,7 @@ searchWithModifications cp sdb ddb ms2 = traceShow modCombs $
     --[(['A'],[2],343.1)]
     
     modCombs  = filter (\(_,_,m) -> if min_mass <= m && m <= max_mass then True else False) $ mods_raw 
-    mods_raw  = map (\ma_cnt -> (ma, (map fromIntegral ma_cnt), mass + (calcDelta ma_cnt) )) ma_counts
+    mods_raw  = map (\ma_cnt -> (ma, (map fromIntegral ma_cnt), mass - (calcDelta ma_cnt) )) ma_counts
         where 
         calcDelta ma_cnt = sum (zipWith (\c m -> m * fromIntegral c) ma_cnt ma_mass)
     ma_counts  = filter (\c -> if sum c < max_ma then True else False) ma_counts'
@@ -119,7 +126,7 @@ searchWithModifications cp sdb ddb ms2 = traceShow modCombs $
 
     
 searchAModComb :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> ([Word8], [Word8], Float) -> IO MatchCollection
-searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) = traceShow ("searching mod comb", ma, ma_count, mod_mass) $ 
+searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) =  
   filterCandidateByMass cp ddb mod_mass                                     $ \candidatesByMass ->
   CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->   -- modifable acid
   CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
@@ -127,19 +134,20 @@ searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) = traceShow ("searching m
   let d_mods = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, d_mod_ma_mass) in
   filterCandidateByModability cp ddb candidatesByMass d_mods                    $ \candidatesByMassAndMod ->
   genModCandidates cp ddb candidatesByMassAndMod d_mods                         $ \modifiedCandidates ->
-  mkModSpecXCorr ddb d_mods modifiedCandidates (ms2charge ms2) (G.length spec)  $ \mspecThry   ->
+  mkModSpecXCorr ddb d_mods modifiedCandidates (ms2charge ms2) (G.length spec)  $ \mspecThry   -> -- do
   --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
-  --mapMaybe finish `fmap` sequestXC cp candidatesByMass spec mspecThry -- @TODO
-  return []
+  mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
+  --return []
   where
-    ma_mass       = [15.15,-75.75] -- @TODO get this from config params
-    sum_ma_count  = fromIntegral $ sum ma_count
-    mod_num_ma    = length ma
-    spec          = sequestXCorr cp ms2
-    peaks         = extractPeaks spec
+    ma_mass         = [15.15,-75.75] -- @TODO get this from config params
+    sum_ma_count    = fromIntegral $ sum ma_count
+    mod_num_ma      = length ma
+    spec            = sequestXCorr cp ms2
+    peaks           = extractPeaks spec
 
-    finish (sx,i) = liftM (\f -> Match f sx (sp f)) (lookup sdb i)
-    sp            = matchIonSequence cp (ms2charge ms2) peaks
+    finish (sx,i,u) = liftM (\f -> Match (modifyFragment pmod u f) sx (sp f) pmod u) (lookup sdb i)
+    sp              = matchIonSequence cp (ms2charge ms2) peaks
+    pmod            = zipWith3 (\a b c -> (w2c a, fromIntegral b, c)) ma ma_count ma_mass
     
 
 --
@@ -171,17 +179,17 @@ filterCandidateByModability ::
                        ConfigParams 
                     -> DeviceSeqDB 
                     -> CandidatesByMass     --- ^ subset of peptides, [idx to pep], number of pep
-                    -> PepMod               
+                    -> PepModDevice               
                     -> (CandidatesByMod -> IO b)
                     -> IO b
 filterCandidateByModability cp db (sub_nIdx, d_sub_idx) (mod_num_ma, d_mod_ma, d_mod_ma_count, _, _) action =
   CUDA.allocaArray sub_nIdx             $ \d_idx      ->     -- filtered results to be returned here
   CUDA.allocaArray (sub_nIdx*mod_num_ma)      $ \d_pep_ma_count -> -- peptide ma counts
   CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_mod_ma d_mod_ma_count mod_num_ma >>= \n -> do
-    when (verbose cp) $ hPutStrLn stderr ("filter by modability:\n" ++ 
-                                          "num searched: " ++ show sub_nIdx ++ "\n" ++
-                                          "num modable: " ++ show n ++ "\n" ++
-                                          "pep_ma_count not used: " ++ show (mod_num_ma*(sub_nIdx - n)) ++ "\n") 
+    --when (verbose cp) $ hPutStrLn stderr ("filter by modability:\n" ++ 
+                                          --"num searched: " ++ show sub_nIdx ++ "\n" ++
+                                          --"num modable: " ++ show n ++ "\n" ++
+                                          --"pep_ma_count not used: " ++ show (mod_num_ma*(sub_nIdx - n)) ++ "\n") 
     action (n, d_idx, d_pep_ma_count)
   --CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-delta) (mass+delta) >>= \n -> action (d_idx,n)
 
@@ -193,7 +201,7 @@ filterCandidateByModability cp db (sub_nIdx, d_sub_idx) (mod_num_ma, d_mod_ma, d
 genModCandidates :: ConfigParams
                  -> DeviceSeqDB
                  -> CandidatesByMod
-                 -> PepMod
+                 -> PepModDevice
                  -> (ModCandidates -> IO b)
                  -> IO b
 genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, _) action =
@@ -210,7 +218,7 @@ genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma,
       action (total, d_mpep_idx, d_mpep_unrank)
 
 mkModSpecXCorr :: DeviceSeqDB
-               -> PepMod
+               -> PepModDevice
                -> ModCandidates
                -> Float
                -> Int
@@ -269,7 +277,7 @@ sequestXC cp (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatches
     -- Score and rank each candidate sequence
     --
     CUDA.mvm   d_score d_thry d_expr nIdx (G.length expr)
-    --CUDA.rsort d_score d_idx nIdx
+    CUDA.rsort d_score d_idx nIdx
 
     -- Retrieve the most relevant matches
     --
@@ -279,3 +287,40 @@ sequestXC cp (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatches
 
     return $ zipWith (\s i -> (s/10000,fromIntegral i)) sc ix
 
+-- Modified candidates version
+sequestXCMod :: ConfigParams -> ModCandidates -> Int -> Spectrum -> IonSeries -> IO [(Float,Int,[Int])]
+sequestXCMod cp (nMCands, d_mpep_idx, d_mpep_unrank) sum_ma_count expr d_thry = let 
+  n' = max (numMatches cp) (numMatchesDetail cp) 
+  h_mpep_idx_idx = G.generate nMCands (\i -> cIntConv i) :: (U.Vector Word32) in
+    -- There may be no candidates as a result of bad database search parameters,
+    -- or if something unexpected happened (out of memory)
+    --
+  if nMCands == 0 then return [] else 
+  CUDA.withVector  expr             $ \d_expr  -> 
+  CUDA.withVector  h_mpep_idx_idx   $ \d_mpep_idx_idx -> 
+
+  CUDA.allocaArray nMCands          $ \d_score -> do
+    when (verbose cp) $ hPutStrLn stderr ("Modified peptides: " ++ show nMCands)
+
+
+    -- Score and rank each candidate sequence
+    --
+    CUDA.mvm   d_score d_thry d_expr nMCands (G.length expr)
+    CUDA.rsort d_score d_mpep_idx_idx nMCands
+
+    -- Retrieve the most relevant matches
+    --
+    let n = min n' nMCands
+    score         <- CUDA.peekListArray n d_score
+    mpep_idx_idx' <- CUDA.peekListArray n d_mpep_idx_idx
+    mpep_idx'     <- CUDA.peekListArray nMCands d_mpep_idx
+    mpep_unrank'  <- CUDA.peekListArray (nMCands*sum_ma_count) d_mpep_unrank
+
+    let mpep_idx_idx = map fromIntegral mpep_idx_idx'
+        mpep_idx     = map fromIntegral mpep_idx'
+        mpep_unrank  = map fromIntegral mpep_unrank'
+
+
+    return $ zipWith (\s i -> (s/10000, (mpep_idx !! i), (sublist (i*sum_ma_count) (i*sum_ma_count + sum_ma_count) mpep_unrank))) score mpep_idx_idx
+    where
+    sublist beg end ls = drop beg $ take end ls
