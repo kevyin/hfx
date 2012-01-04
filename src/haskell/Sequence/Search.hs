@@ -90,18 +90,21 @@ searchWithoutMods cp sdb ddb ms2 =
 searchWithMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
 searchWithMods cp sdb ddb ms2 = traceShow modCombs $ do
   matches <- mapM (searchAModComb cp sdb ddb ms2) modCombs
-  return $ concat matches
+  
+  
+  traceShow ("max", max_mass) $ traceShow ("min", min_mass) $ return $ concat matches
   where
-    -- @TODO generate using liftM
-    max_mass      = 2000 -- @TODO
-    min_mass      = -2000 -- @TODO
-    max_ma          = 10  -- @TODO
+    comparedbFrag (res1,_,_) (res2,_,_) = compare res1 res2
+    (max_mass,_,_)  = U.maximumBy comparedbFrag $ dbFrag sdb 
+    (min_mass,_,_)  = U.minimumBy comparedbFrag $ dbFrag sdb 
+    max_ma          = 20  -- @TODO
     ma = map c2w ['A','C']
     ma_mass       = [15.15,-75.75] -- @TODO get this from config params
     --ma_count = [2,1]
     --modCombs = [(ma, ma_count, 1123.4)]
     --[(['A'],[2],343.1)]
     
+    -- @TODO generate using liftM
     modCombs  = filter (\(_,_,m) -> if min_mass <= m && m <= max_mass then True else False) $ mods_raw 
     mods_raw  = map (\ma_cnt -> (ma, (map fromIntegral ma_cnt), mass - (calcDelta ma_cnt) )) ma_counts
         where 
@@ -117,7 +120,7 @@ searchWithMods cp sdb ddb ms2 = traceShow modCombs $ do
         expand _      = []
 
     replace :: (Show a) => Int -> a -> [a] -> [a]
-    replace idx val list = traceShow (idx, val, list) $ x ++ val : ys
+    replace idx val list = x ++ val : ys
         where
         (x,_:ys) = splitAt idx list
 
@@ -126,7 +129,7 @@ searchWithMods cp sdb ddb ms2 = traceShow modCombs $ do
 
     
 searchAModComb :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> ([Word8], [Word8], Float) -> IO MatchCollection
-searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) =  
+searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) = 
   filterCandidateByMass cp ddb mod_mass                                     $ \candidatesByMass ->
   CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->   -- modifable acid
   CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
@@ -300,7 +303,7 @@ sequestXCMod cp (nMCands, d_mpep_idx, d_mpep_unrank) sum_ma_count expr d_thry = 
   CUDA.withVector  h_mpep_idx_idx   $ \d_mpep_idx_idx -> 
 
   CUDA.allocaArray nMCands          $ \d_score -> do
-    when (verbose cp) $ hPutStrLn stderr ("Modified peptides: " ++ show nMCands)
+    when (verbose cp) $ hPutStrLn stderr ("Candidate modified peptides: " ++ show nMCands)
 
 
     -- Score and rank each candidate sequence

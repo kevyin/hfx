@@ -88,43 +88,18 @@ modifyFragment pm unrank (Fragment fmass fheader fdata') = traceShow (fdata, mod
     modData i (x:xs) = if elem i modified
                        then x : '*' : modData (i+1) xs
                        else x : modData (i+1) xs
-    modData i _      = []
+    modData _ _      = []
 
     modInfo = snd $ mapAccumL (\u_idx (ma,cnt,_) -> (u_idx + cnt, (ma, cnt, sublist u_idx (u_idx+cnt) unrank))) 0 pm
 
     modified = findModified modInfo :: [Int]
 
-    findModified (m@(ma,cnt,u):ms) = if cnt > 0
-                                     then (map (\ith -> occurences !! ith) u) ++ findModified ms
-                                     else findModified ms
+    findModified ((ma,cnt,u):ms) = if cnt > 0
+                                   then (map (\ith -> occurences !! ith) u) ++ findModified ms
+                                   else findModified ms
       where
-        occurences = findIndices ((==) ma) fdata 
+        occurences = filter (\i -> 1 < i && i < ((length fdata) - 2)) $ findIndices ((==) ma) fdata -- filter out flanking acids
     findModified _ = []
-
-
-
-{-
-fragUpdate :: ConfigParams -> Fragment -> Int -> Int -> Float -> Fragment
-fragUpdate cp (Fragment m h d) mc mp mr = Fragment (mr + massH + massH2O) h (L.pack . modData 0 . L.unpack $ d)
-    where
-    modData :: Int -> [Word8] -> [Word8]
-    modData i (x:xs) = if elem i toApply
-                       then x : c2w '*' : modData (i+1) xs
-                       else x : modData (i+1) xs
-    modData i _      = []
-    
-    toApply = applyMod 0 mods
-    applyMod i (m:ms) = if (mp .&. (shift 1 i) /= 0)
-                        then m : applyMod (i+1) ms
-                        else applyMod (i+1) ms
-    applyMod i _    = []
-
-    mods = map fromIntegral $ L.findIndices test d
-    test w = if (inRange ('A','Z') (w2c w)) && (getVarMass cp (w2c w) /= 0)
-             then True
-             else False
--}
-
 
 --------------------------------------------------------------------------------
 -- Sequence Database
