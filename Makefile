@@ -8,10 +8,10 @@ PROJECTS   := $(ALGORITHMS)
 CABAL      := cabal
 
 ifeq ($(dbg),1)
-    CABALFLAGS += -fdebug
+    CABALFLAGSCONF += -fdebug
 endif
 ifeq ($(verbose),1)
-    CABALFLAGS += --verbose
+    CABALFLAGSBUILD += --verbose
     VERBOSE    :=
 else
     VERBOSE    := @
@@ -22,8 +22,8 @@ endif
 	$(MAKE) -C $(dir $*) $(MAKECMDGOALS)
 
 all : $(addsuffix .do,$(PROJECTS))
-	$(VERBOSE)$(CABAL) configure $(CABALFLAGS)
-	$(VERBOSE)$(CABAL) build $(CABALFLAGS)
+	$(VERBOSE)$(CABAL) configure $(CABALFLAGSCONF)
+	$(VERBOSE)$(CABAL) build $(CABALFLAGSBUILD)
 	@echo "Finished building all"
 
 clean : $(addsuffix .do,$(PROJECTS))

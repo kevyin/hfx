@@ -58,7 +58,7 @@ Executable hfx
   include-dirs:        src/common/include
 
   if flag(debug)
-    extra-libraries:   filterD ion_seriesD mvmD sortD
+    extra-libraries:   filterD ion_seriesD mvmD sortD gen_mod_pepD
   else
     extra-libraries:   filter  ion_series  mvm  sort gen_mod_pep
 
