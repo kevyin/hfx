@@ -17,6 +17,8 @@
 
 #include <stdint.h>
 
+//#define DEBUG
+
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
  * fashion, there is no need to synchronise in order to share data. The most
@@ -216,7 +218,7 @@ addModIons_core
     const uint32_t vector_id       = thread_id / WARP_SIZE;
     const uint32_t thread_lane     = threadIdx.x & (WARP_SIZE-1);
 
-    assert(MAX_MA >= ma_length);
+    assert(MAX_MA >= mod_num_ma);
 
     __shared__ volatile float s_data[BlockSize];
     // Keep a record of ith moddable acid as the pep is traversed
@@ -279,18 +281,18 @@ addModIons_core
             if (is_ma && modded)
             {
                 b_mass = getAAMass<UseCache>(d_mass, d_ions[j]) + d_mod_ma_mass[ma_idx];
-#ifdef _DEBUG
+#ifdef DEBUG
                 d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j] + 32;
 #endif
             } else {
                 b_mass = getAAMass<UseCache>(d_mass, d_ions[j]);
-#ifdef _DEBUG
+#ifdef DEBUG
                 d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j];
 #endif
             }
-#ifdef _DEBUG
+//#ifdef DEBUG
             //d_mions[row*MAX_PEP_LEN + j - row_start] = (uint8_t)(((int)'0')+(ith_ma));
-#endif
+//#endif
                 
 
             if (thread_lane == 0)
@@ -391,7 +393,7 @@ void addModIons
 )
 {
 
-#ifdef _DEBUG
+#ifdef DEBUG
     thrust::device_vector<uint8_t> d_mions_v(MAX_PEP_LEN*num_mpep);
     thrust::device_ptr<uint8_t> d_mions(d_mions_v.data());
 #else
@@ -413,7 +415,7 @@ void addModIons
         assert(!"Non-exhaustive patterns in match");
     }
 
-#ifdef _DEBUG
+#ifdef DEBUG
     std::cout << "Checking generated spectrums" << std::endl;
     std::cout << "delta was: " << delta << std::endl;
     // To check the spectrums above, create these modified peptides serially and call addIons to create spectrums. Then compare the two spectrums
@@ -436,7 +438,7 @@ void addModIons
             for (uint32_t j = 0; j < len_spec; ++j) {
                 uint32_t pos = i*len_spec + j;
                 if (d_out_check_spec[pos] != d_out_mspec_th[pos]) {
-                    //std::cout << "check " << d_out_check_spec[pos] << " != " << d_out_mspec_th[pos] << std::endl;
+                    std::cout << "check " << d_out_check_spec[pos] << " != " << d_out_mspec_th[pos] << std::endl;
                     ++cnt;
                     break;
                 } else {
@@ -452,3 +454,5 @@ void addModIons
 #endif
 
 }
+
+#undef DEBUG

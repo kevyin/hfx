@@ -26,7 +26,7 @@
 #define MASS_H          1.0078246f
 
 /*
- * ONLY used for checking
+ * ONLY used for debugging,  doesnt affect results
  */
 #define MAX_PEP_LEN     1000
 

@@ -66,7 +66,9 @@ main = do
   --
   -- Load the proteins from file, marshal to the device, and then get to work!
   --
+  when (verbose cp) $ hPutStrLn stderr ("Loading Database ...\n" )
   (cp',db) <- loadDatabase cp fp
+  when (verbose cp) $ hPutStrLn stderr ("Searching ...\n" )
   withDeviceDB cp' db $ forM_ dta . search cp' db
 
 

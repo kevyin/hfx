@@ -228,7 +228,7 @@ baseParams =  ConfigParams
         minPeptideMass      = 400,
         maxPeptideMass      = 7200,
 
-        aaMassTable         = U.replicate (rangeSize ('A','Z')) 0 U.// [(index ('A','Z') 'C',57.0)],
+        aaMassTable         = U.replicate (rangeSize ('A','Z')) 0, -- U.// [(index ('A','Z') 'C',57.0)],
         aaMassTypeMono      = True,
 
         maxModableAcids     = 20,

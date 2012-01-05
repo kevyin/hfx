@@ -47,7 +47,7 @@ import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
 import qualified Foreign.CUDA.Algorithms        as CUDA
 
---import Debug.Trace
+import Debug.Trace
 
 type CandidatesByMass = (Int, DevicePtr Word32)
 type CandidatesByMod  = (Int, DevicePtr Word32, DevicePtr Word32)
@@ -129,6 +129,7 @@ searchWithMods cp sdb ddb ms2 = do
     
 searchAModComb :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> ([Word8], [Word8], Float) -> IO MatchCollection
 searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) = 
+  traceShow ("Searching comb: ", pmod) $
   filterCandidateByMass cp ddb mod_mass                                     $ \candidatesByMass ->
   CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->   -- modifable acid
   CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
@@ -141,7 +142,7 @@ searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) =
   mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
   --return []
   where
-    ma_mass         = [15.15,-75.75] -- @TODO get this from config params
+    ma_mass         = getMA_Mass cp 
     sum_ma_count    = fromIntegral $ sum ma_count
     mod_num_ma      = length ma
     spec            = sequestXCorr cp ms2
@@ -207,12 +208,16 @@ genModCandidates :: ConfigParams
                  -> (ModCandidates -> IO b)
                  -> IO b
 genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, _) action =
+
   -- calc number of modified peps generated from each pep
+  --
   CUDA.allocaArray nPep $ \d_pep_num_mpep -> 
   CUDA.allocaArray (nPep*mod_num_ma) $ \d_pep_ma_num_comb -> 
   CUDA.allocaArray (nPep*mod_num_ma) $ \d_pep_ma_num_comb_scan -> 
   CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma >>= \total -> 
+
   --action total
+  --
   CUDA.allocaArray total                $ \d_mpep_rank -> 
   CUDA.allocaArray (total*sum_ma_count) $ \d_mpep_unrank -> 
   CUDA.allocaArray total                $ \d_mpep_idx -> do

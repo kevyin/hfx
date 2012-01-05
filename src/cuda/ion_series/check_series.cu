@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 
+//#define DEBUG
 
 /*
  * to lower
@@ -247,7 +248,7 @@ getSpecNonParallel(
     
     // d_mass
     for (uint8_t i = 'a'; i <= 'z'; ++i) {
-        std::cout << "d_mass " << i << " " << d_check_mass[i - 'A'] << std::endl;
+        std::cout << "d_check_mass " << i << " " << d_check_mass[i - 'A'] << std::endl;
     }
 
     // d_check_ions      amino acid chars. modified acid mass is lower case
@@ -289,3 +290,4 @@ getSpecNonParallel(
             max_charge,
             len_spec);
 }
+#undef DEBUG
