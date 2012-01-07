@@ -32,6 +32,8 @@ import Sequence.Location
 import Sequence.IonSeries
 import Util.Misc
 import Util.C2HS
+import Util.Time
+import Util.Show
 
 import Data.Word
 import Data.Maybe
@@ -65,8 +67,14 @@ type PepModDevice = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float
 --
 searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
 searchForMatches cp sdb ddb ms2 = do
-  matches <- searchWithoutMods cp sdb ddb ms2 
-  matchesMods <- searchWithMods cp sdb ddb ms2 
+  --matches <- searchWithoutMods cp sdb ddb ms2 
+  (t,matches) <- bracketTime $ searchWithoutMods cp sdb ddb ms2 
+  --when (verbose cp) $ hPutStrLn stderr ("searchWithoutMods Elapsed time: " ++ showTime t)
+
+  --matchesMods <- searchWithMods cp sdb ddb ms2 
+  (t,matchesMods) <- bracketTime $ searchWithMods cp sdb ddb ms2 
+  when (verbose cp) $ hPutStrLn stderr ("searchWithMods Elapsed time: " ++ showTime t)
+
   return $ reverse $ sortBy matchScoreOrder $ matches ++ matchesMods
 
 searchWithoutMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
@@ -89,10 +97,16 @@ searchWithoutMods cp sdb ddb ms2 =
 --
 searchWithMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
 searchWithMods cp sdb ddb ms2 = do
-  matches <- mapM (searchAModComb cp sdb ddb ms2) modCombs
+  --matches <- mapM (searchAModComb cp sdb ddb ms2) modCombs
+  matches <- mapM search modCombs
   
   return $ concat matches
   where
+
+    search x = do (t,matches) <- bracketTime $  searchAModComb cp sdb ddb ms2 x
+                  --hPutStrLn stderr ("searchWithMods Elapsed time: " ++ showTime t)
+                  return matches
+
     comparedbFrag (res1,_,_) (res2,_,_) = compare res1 res2
     (max_mass,_,_)  = U.maximumBy comparedbFrag $ dbFrag sdb 
     (min_mass,_,_)  = U.minimumBy comparedbFrag $ dbFrag sdb 
@@ -129,7 +143,8 @@ searchWithMods cp sdb ddb ms2 = do
     
 searchAModComb :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> ([Word8], [Word8], Float) -> IO MatchCollection
 searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) = 
-  traceShow ("Searching comb: ", pmod) $
+  --traceShow ("Searching comb: ", pmod) $
+
   filterCandidateByMass cp ddb mod_mass                                     $ \candidatesByMass ->
   CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->   -- modifable acid
   CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
@@ -137,10 +152,12 @@ searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) =
   let d_mods = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, d_mod_ma_mass) in
   filterCandidateByModability cp ddb candidatesByMass d_mods                    $ \candidatesByMassAndMod ->
   genModCandidates cp ddb candidatesByMassAndMod d_mods                         $ \modifiedCandidates ->
-  mkModSpecXCorr ddb d_mods modifiedCandidates (ms2charge ms2) (G.length spec)  $ \mspecThry   -> -- do
+  mkModSpecXCorr ddb d_mods modifiedCandidates (ms2charge ms2) (G.length spec)  $ \mspecThry   -> do
   --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
   mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
-  --return []
+  --(t,res) <- bracketTime $ mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
+  --when (verbose cp) $ hPutStrLn stderr ("sequestXCMod Elapsed time: " ++ showTime t)
+  --return res
   where
     ma_mass         = getMA_Mass cp 
     sum_ma_count    = fromIntegral $ sum ma_count
@@ -162,8 +179,11 @@ searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) =
 --
 filterCandidateByMass :: ConfigParams -> DeviceSeqDB -> Float -> (CandidatesByMass -> IO b) -> IO b
 filterCandidateByMass cp db mass action =
-  CUDA.allocaArray np $ \d_idx ->
+  CUDA.allocaArray np $ \d_idx -> -- do
   CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-delta) (mass+delta) >>= \n -> action (n,d_idx)
+  --(t,n) <- bracketTime $ CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-delta) (mass+delta) 
+  --when (verbose cp) $ hPutStrLn stderr ("filterCandidatesByMass Elapsed time: " ++ showTime t)
+  --action (n,d_idx)
   where
     np    = numFragments db
     delta = massTolerance cp
@@ -187,12 +207,14 @@ filterCandidateByModability ::
                     -> IO b
 filterCandidateByModability cp db (sub_nIdx, d_sub_idx) (mod_num_ma, d_mod_ma, d_mod_ma_count, _, _) action =
   CUDA.allocaArray sub_nIdx             $ \d_idx      ->     -- filtered results to be returned here
-  CUDA.allocaArray (sub_nIdx*mod_num_ma)      $ \d_pep_ma_count -> -- peptide ma counts
+  CUDA.allocaArray (sub_nIdx*mod_num_ma)      $ \d_pep_ma_count -> -- do -- peptide ma counts
   CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_mod_ma d_mod_ma_count mod_num_ma >>= \n -> do
     --when (verbose cp) $ hPutStrLn stderr ("filter by modability:\n" ++ 
                                           --"num searched: " ++ show sub_nIdx ++ "\n" ++
                                           --"num modable: " ++ show n ++ "\n" ++
                                           --"pep_ma_count not used: " ++ show (mod_num_ma*(sub_nIdx - n)) ++ "\n") 
+    --(t,n) <- bracketTime $ CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_mod_ma d_mod_ma_count mod_num_ma
+    --when (verbose cp) $ hPutStrLn stderr ("findModablePeptides Elapsed time: " ++ showTime t)
     action (n, d_idx, d_pep_ma_count)
   --CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-delta) (mass+delta) >>= \n -> action (d_idx,n)
 
@@ -222,6 +244,8 @@ genModCandidates cp ddb (nPep, d_pep_idx, d_pep_ma_count) (mod_num_ma, d_mod_ma,
   CUDA.allocaArray (total*sum_ma_count) $ \d_mpep_unrank -> 
   CUDA.allocaArray total                $ \d_mpep_idx -> do
       CUDA.genModCands d_mpep_idx d_mpep_rank d_mpep_unrank total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma
+      --(t,_) <- bracketTime $ CUDA.genModCands d_mpep_idx d_mpep_rank d_mpep_unrank total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma
+      --when (verbose cp) $ hPutStrLn stderr ("genModCands Elapsed time: " ++ showTime t)
       action (total, d_mpep_idx, d_mpep_unrank)
 
 mkModSpecXCorr :: DeviceSeqDB
@@ -236,6 +260,8 @@ mkModSpecXCorr db (mod_num_ma, d_mod_ma, d_mod_ma_count,_ , d_mod_ma_mass) (tota
     let bytes = fromIntegral $ n * CUDA.sizeOfPtr d_mspec
     CUDA.memset  d_mspec bytes 0
     CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_idx d_mpep_unrank total d_mod_ma d_mod_ma_count d_mod_ma_mass mod_num_ma ch len
+    --(t,_) <- bracketTime $ CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_idx d_mpep_unrank total d_mod_ma d_mod_ma_count d_mod_ma_mass mod_num_ma ch len
+    --hPutStrLn stderr ("addModIons Elapsed time: " ++ showTime t)
 
     action d_mspec
   where
@@ -307,7 +333,7 @@ sequestXCMod cp (nMCands, d_mpep_idx, d_mpep_unrank) sum_ma_count expr d_thry = 
   CUDA.withVector  h_mpep_idx_idx   $ \d_mpep_idx_idx -> 
 
   CUDA.allocaArray nMCands          $ \d_score -> do
-    when (verbose cp) $ hPutStrLn stderr ("Candidate modified peptides: " ++ show nMCands)
+    --when (verbose cp) $ hPutStrLn stderr ("Candidate modified peptides: " ++ show nMCands)
 
 
     -- Score and rank each candidate sequence

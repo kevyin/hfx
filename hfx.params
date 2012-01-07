@@ -6,7 +6,7 @@ mass-tolerance          = 3.0
 remove-precursor-peak   = True
 missed-cleavages        = 2
 digestion-rule          = 1
-min-peptide-mass        = 400
+min-peptide-mass        = 200
 max-peptide-mass        = 7200
 aa-mass-type            = Mono
 
@@ -18,10 +18,12 @@ add_C                   = 57.0
 #
 # Variable amino acid modifications
 #
-max-modable-acids       = 5
+max-modable-acids       = 64
 #mod_C                   = 57.0
-mod_Q                   = -17
+#mod_Q                   = -17
 #mod_N                   = 29
+mod_A   = 10
+mod_L   = -22
 
 #
 # Results display
