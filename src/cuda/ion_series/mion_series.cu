@@ -187,7 +187,7 @@ isToBeModded(const uint32_t *d_mpep_unrank, const uint8_t *d_mod_ma_count, uint3
  * output will contain the theoretical spectra peaks in a dense (although
  * mostly zero) matrix.
  */
-template <uint32_t BlockSize, uint32_t MaxCharge, bool UseCache>
+template <uint32_t BlockSize, uint32_t MaxCharge, bool UseCache, uint32_t MaxMA>
 __global__ static void
 addModIons_core
 (
@@ -218,11 +218,11 @@ addModIons_core
     const uint32_t vector_id       = thread_id / WARP_SIZE;
     const uint32_t thread_lane     = threadIdx.x & (WARP_SIZE-1);
 
-    assert(MAX_MA >= mod_num_ma);
+    assert(MaxMA >= mod_num_ma);
 
     __shared__ volatile float s_data[BlockSize];
     // Keep a record of ith moddable acid as the pep is traversed
-    __shared__ volatile uint32_t s_pep_ith_ma[MAX_MA][BlockSize];
+    __shared__ volatile uint32_t s_pep_ith_ma[MaxMA][BlockSize];
 
 
     for (uint32_t row = vector_id; row < num_mpep; row += numVectors)
@@ -327,8 +327,7 @@ addModIons_control(uint32_t N, uint32_t &blocks, uint32_t &threads)
     blocks  = min(blocks, MAX_BLOCKS);
 }
 
-
-template <uint32_t MaxCharge, bool UseCache>
+template <uint32_t MaxCharge, bool UseCache, uint32_t MaxMA>
 static void
 addModIons_dispatch
 (
@@ -360,11 +359,11 @@ addModIons_dispatch
     addModIons_control(num_mpep, blocks, threads);
     switch (threads)
     {
-    //case 512: addModIons_core<512,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx,, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, len_spec, mass_delta, total_ma_count); break;
-    //case 256: addModIons_core<256,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx,, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, len_spec, mass_delta, total_ma_count); break;
-    case 128: addModIons_core<128,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
-    case  64: addModIons_core< 64,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
-    case  32: addModIons_core< 32,MaxCharge,UseCache><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
+    //case 512: addModIons_core<512,MaxCharge,UseCache,MaxMA><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx,, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, len_spec, mass_delta, total_ma_count); break;
+    //case 256: addModIons_core<256,MaxCharge,UseCache,MaxMA><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx,, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, len_spec, mass_delta, total_ma_count); break;
+    case 128: addModIons_core<128,MaxCharge,UseCache,MaxMA><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
+    case  64: addModIons_core< 64,MaxCharge,UseCache,MaxMA><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
+    case  32: addModIons_core< 32,MaxCharge,UseCache,MaxMA><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
     default:
         assert(!"Non-exhaustive patterns in match");
     }
@@ -372,6 +371,44 @@ addModIons_dispatch
     if (UseCache)
       unbind_x(d_mass);
 }
+
+template <uint32_t MaxMA>
+static void
+addModIons_dispatch_max_charge
+(
+    uint32_t            *d_mspec,
+    uint8_t             *d_mions,
+    const float         *d_residual,
+    const float         *d_mass,
+    const uint8_t       *d_ions,
+    const uint32_t      *d_tc,
+    const uint32_t      *d_tn,
+    const uint32_t      *d_mpep_idx,
+    const uint32_t      *d_mpep_unrank,
+    const uint32_t      num_mpep,
+    const uint8_t       *d_mod_ma,
+    const uint8_t       *d_mod_ma_count,
+    const float         *d_mod_ma_mass,
+    const uint32_t      mod_num_ma,
+    const uint32_t      len_spec,
+    const float         mass_delta,
+    const uint32_t      total_m,
+    const uint32_t      max_charge
+)
+{
+    switch (max_charge)
+    {
+    case 1: addModIons_dispatch<1,true,MaxMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_m); break;
+    case 2: addModIons_dispatch<2,true,MaxMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_m); break;
+    case 3: addModIons_dispatch<3,true,MaxMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_m); break;
+    case 4: addModIons_dispatch<4,true,MaxMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_m); break;
+    default:
+        assert(!"Non-exhaustive patterns in match");
+    }
+
+}
+
+
 
 void addModIons
 (
@@ -405,12 +442,18 @@ void addModIons
     thrust::device_ptr<const uint8_t> d_mod_ma_count_th(d_mod_ma_count);
     const uint32_t total_ma_count = thrust::reduce(d_mod_ma_count_th, d_mod_ma_count_th + mod_num_ma);
 
-    switch (max_charge)
+    switch (mod_num_ma)
     {
-    case 1: addModIons_dispatch<1,true>(d_out_mspec,  d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
-    case 2: addModIons_dispatch<2,true>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
-    case 3: addModIons_dispatch<3,true>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
-    case 4: addModIons_dispatch<4,true>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count); break;
+    case 1: addModIons_dispatch_max_charge<1>(d_out_mspec,  d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
+    case 2: addModIons_dispatch_max_charge<2>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
+    case 3: addModIons_dispatch_max_charge<3>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
+    case 4: addModIons_dispatch_max_charge<4>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
+    case 5: addModIons_dispatch_max_charge<5>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
+    case 6: addModIons_dispatch_max_charge<6>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
+    case 7: addModIons_dispatch_max_charge<7>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
+    case 8: addModIons_dispatch_max_charge<8>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
+    case 9: addModIons_dispatch_max_charge<9>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
+    case 10: addModIons_dispatch_max_charge<10>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
     default:
         assert(!"Non-exhaustive patterns in match");
     }

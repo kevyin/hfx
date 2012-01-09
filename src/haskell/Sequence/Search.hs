@@ -48,6 +48,7 @@ import qualified Data.Vector.Unboxed            as U
 import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
 import qualified Foreign.CUDA.Algorithms        as CUDA
+--import qualified Foreign.CUDA.Stream            as CUDA
 
 import Debug.Trace
 
@@ -333,7 +334,7 @@ sequestXCMod cp (nMCands, d_mpep_idx, d_mpep_unrank) sum_ma_count expr d_thry = 
   CUDA.withVector  h_mpep_idx_idx   $ \d_mpep_idx_idx -> 
 
   CUDA.allocaArray nMCands          $ \d_score -> do
-    --when (verbose cp) $ hPutStrLn stderr ("Candidate modified peptides: " ++ show nMCands)
+    when (verbose cp) $ hPutStrLn stderr ("Candidate modified peptides: " ++ show nMCands)
 
 
     -- Score and rank each candidate sequence
