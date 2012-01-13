@@ -69,7 +69,8 @@ main = do
   when (verbose cp) $ hPutStrLn stderr ("Loading Database ...\n" )
   (cp',db) <- loadDatabase cp fp
   when (verbose cp) $ hPutStrLn stderr ("Searching ...\n" )
-  withDeviceDB cp' db $ forM_ dta . search cp' db
+  makeDevModInfo cp' db $ \dmi ->
+    withDeviceDB cp' db $ forM_ dta . search cp' db dmi
 
 
 {-# INLINE loadDatabase #-}
@@ -92,12 +93,12 @@ loadDatabase cp fp = do
 --
 -- Search the protein database for a match to the experimental spectra
 --
-search :: ConfigParams -> SequenceDB -> DeviceSeqDB -> FilePath -> IO ()
-search cp db dev fp =
+search :: ConfigParams -> SequenceDB -> DeviceModInfo ->  DeviceSeqDB -> FilePath -> IO ()
+search cp db dmi dev fp =
   readMS2Data fp >>= \r -> case r of
     Left  s -> hPutStrLn stderr s
     Right d -> forM_ d $ \ms2 -> do
-      (t,matches) <- bracketTime $ searchForMatches cp db dev ms2
+      (t,matches) <- bracketTime $ searchForMatches cp db dev dmi ms2
       when (verbose cp) $ hPutStrLn stderr ("Elapsed time: " ++ showTime t)
 
       printConfig cp fp ms2

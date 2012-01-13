@@ -11,8 +11,8 @@
 
 module Sequence.Fragment
   (
-    SequenceDB(..), DeviceSeqDB(..), Fragment(..),
-    makeSeqDB, withDeviceDB, fraglabel, PepMod, modifyFragment
+    SequenceDB(..), DeviceSeqDB(..), DeviceModInfo(..), Fragment(..),
+    makeSeqDB, withDeviceDB, makeDevModInfo, fraglabel, PepMod, modifyFragment
   )
   where
 
@@ -28,6 +28,7 @@ import Data.Binary
 import Data.Vector.Binary                       ()
 import Control.Monad
 import Control.Applicative
+import Data.Vector.Algorithms.Intro             as VA
 
 import qualified Bio.Sequence                   as F
 import qualified Data.ByteString.Lazy           as L
@@ -43,7 +44,7 @@ import qualified Data.Vector.Fusion.Stream.Size as S
 import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
 
---import Debug.Trace
+import Debug.Trace
 
 #define PHASE_STREAM [1]
 #define PHASE_INNER  [0]
@@ -131,6 +132,15 @@ instance Binary SequenceDB where
   {-# INLINE get #-}
   get = liftM5 SeqDB get get get (liftM3 G.zip3 get get get) get
 
+data DeviceModInfo = DevModInfo
+  {
+    -- num_ma, d_ma, d_ma_mass (mass change)
+    devModAcids         :: (Int, CUDA.DevicePtr Word8, CUDA.DevicePtr Float), 
+    -- num_mod, d_mod_ma_count (num_ma by num_mod), d_mod_ma_count_sum, d_mod_delta)
+    devModCombs         :: (Int, CUDA.DevicePtr Word32, CUDA.DevicePtr Word32, CUDA.DevicePtr Float), 
+    devResIdxSort       :: CUDA.DevicePtr Word32
+  }
+  deriving Show
 
 --
 -- An extension of the above referencing memory actually stored on the graphics
@@ -211,7 +221,52 @@ withDeviceDB cp sdb action =
     CUDA.withVector ions $ \d_ions ->
       action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n))
 
+makeDevModInfo :: ConfigParams -> SequenceDB -> (DeviceModInfo -> IO a) -> IO a
+makeDevModInfo cp sdb action = 
+    CUDA.withVector ma               $ \d_ma        ->
+    CUDA.withVector ma_mass          $ \d_ma_mass   ->
+    CUDA.withVector mod_delta        $ \d_mod_delta ->
+    CUDA.withVector mod_ma_count     $ \d_mod_ma_count ->
+    CUDA.withVector mod_ma_count_sum $ \d_mod_ma_count_sum -> do
 
+    let (r,_,_) = G.unzip3 (dbFrag sdb)
+    pep_idx <- U.unsafeThaw $ U.enumFromN 0 (G.length r) 
+    VA.sortBy (\i j -> compare (r G.! i) (r G.! j)) pep_idx
+    pep_idx' <- U.unsafeFreeze pep_idx
+    let pep_idx_r_sorted = U.map fromIntegral pep_idx'
+
+    CUDA.withVector pep_idx_r_sorted         $ \d_r_sorted -> 
+
+      action (DevModInfo (num_ma, d_ma, d_ma_mass) (num_mod, d_mod_ma_count, d_mod_ma_count_sum, d_mod_delta) d_r_sorted)
+      where
+        max_ma  = maxModableAcids cp
+        ma      = U.map c2w $ U.fromList $ getMA cp
+        ma_mass = U.fromList $ getMA_Mass cp
+        num_ma  = U.length ma
+        num_mod          = length ma_count
+        mod_ma_count     = U.map fromIntegral $ U.concat ma_count
+        mod_ma_count_sum = U.map fromIntegral $ U.fromList $ map U.sum ma_count
+        mod_delta        = U.fromList $ map calcDelta ma_count
+
+        calcDelta ma_cnt = U.sum (U.zipWith (\c m -> m * fromIntegral c) ma_cnt ma_mass)
+        ma_count  = map U.fromList $ filter (\c -> if sum c < max_ma then True else False) ma_count'
+        ma_count' = tail (addModDimensions ((U.length ma) - 1) [ replicate (U.length ma) 0 ])
+
+        addModDimensions :: Int -> [[Int]] -> [[Int]]
+        addModDimensions dim xs = 
+            if dim >= 0 then expand $ addModDimensions (dim-1) xs else xs
+            where
+            expand (c:cs) = [c] ++ 
+                            map (\cnt -> replace dim cnt c) [1..max_ma] ++ 
+                            expand cs
+            expand _      = []
+
+        replace :: (Show a) => Int -> a -> [a] -> [a]
+        replace idx val list = x ++ val : ys
+            where
+            (x,_:ys) = splitAt idx list
+
+    
 --------------------------------------------------------------------------------
 -- Digestion
 --------------------------------------------------------------------------------

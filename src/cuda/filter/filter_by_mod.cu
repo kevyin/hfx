@@ -15,6 +15,7 @@
 #include <iostream>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/device_vector.h>
+#include <thrust/scan.h>
 
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
@@ -464,3 +465,155 @@ findModablePeptides
     return numValid;
 }
 
+template <typename T>
+struct findBegin : public thrust::unary_function<float,T>
+{
+    thrust::device_ptr<const float> d_r;
+    thrust::device_ptr<const uint32_t> d_pep_idx_r_sorted;
+    const uint32_t num_pep;
+    const float    mass;
+    const float    eps;
+
+    __host__ __device__
+    findBegin(thrust::device_ptr<const float> _r, 
+              thrust::device_ptr<const uint32_t> _r_sorted,
+              const uint32_t _n,
+              const float    _m,
+              const float    _eps) 
+             : d_r(_r), d_pep_idx_r_sorted(_r_sorted), num_pep(_n), mass(_m), eps(_eps) {}
+
+    __host__ __device__ T operator() (float delta)
+    {
+        const float target = mass + delta - eps;
+        T min = 0;
+        T max = num_pep - 1;
+
+        while (min < max) {
+            T mid = (min + max) / 2;
+            const float cur = d_r[d_pep_idx_r_sorted[mid]];
+            if (cur >= target) {
+                max = mid;
+            } else {
+                min = mid + 1;    
+            }
+        }
+
+        return min;
+    }
+};
+
+template <typename T>
+struct findEnd : public thrust::unary_function<float,T>
+{
+    thrust::device_ptr<const float> d_r;
+    thrust::device_ptr<const uint32_t> d_pep_idx_r_sorted;
+    const uint32_t num_pep;
+    const float    mass;
+    const float    eps;
+
+    __host__ __device__
+    findEnd (thrust::device_ptr<const float> _r, 
+              thrust::device_ptr<const uint32_t> _r_sorted,
+              const uint32_t _n,
+              const float    _m,
+              const float    _eps) 
+             : d_r(_r), d_pep_idx_r_sorted(_r_sorted), num_pep(_n), mass(_m), eps(_eps) {}
+
+    __host__ __device__ T operator() (float delta)
+    {
+        const float target = mass + delta + eps;
+        T min = 0;
+        T max = num_pep - 1;
+
+        while (min < max) {
+            T sum = min + max;
+            T mid = (sum & 1) ? ((sum / 2) + 1) : (sum/2); // get the ceil((min+max)/2)
+            const float cur = d_r[d_pep_idx_r_sorted[mid]];
+            if (cur > target) {
+                max = mid - 1;
+            } else {
+                min = mid;    
+            }
+        }
+        if (max != 0)
+            return max + 1;
+        else 
+            return max;
+        
+    }
+};
+
+uint32_t
+findBeginEnd_f
+(
+    uint32_t            *d_begin_raw,
+    uint32_t            *d_end_raw,
+    uint32_t            *d_num_pep_raw,
+    uint32_t            *d_num_pep_scan_raw,
+
+    const float         *d_r_raw,
+    const uint32_t      *d_pep_idx_r_sorted_raw,
+    const uint32_t      num_pep,
+
+    const float         *d_mod_delta_raw,
+    const uint32_t      num_mod,
+    const float         mass_,
+    const float         eps
+)
+{
+    float mass = 0;
+    if (num_mod == 0) return 0;
+    thrust::device_ptr<uint32_t> d_begin(d_begin_raw);
+    thrust::device_ptr<uint32_t> d_end(d_end_raw);
+    thrust::device_ptr<uint32_t> d_num_pep(d_num_pep_raw);
+    thrust::device_ptr<uint32_t> d_num_pep_scan(d_num_pep_scan_raw);
+
+    thrust::device_ptr<const float> d_r(d_r_raw);
+    thrust::device_ptr<const uint32_t> d_pep_idx_r_sorted(d_pep_idx_r_sorted_raw);
+    thrust::device_ptr<const float> d_mod_delta(d_mod_delta_raw);
+
+    thrust::transform(d_mod_delta, d_mod_delta + num_mod, d_begin, findBegin<uint32_t>(d_r, d_pep_idx_r_sorted, num_pep, mass, eps));
+    thrust::transform(d_mod_delta, d_mod_delta + num_mod, d_end, findEnd<uint32_t>(d_r, d_pep_idx_r_sorted, num_pep, mass, eps));
+
+    thrust::transform(d_end, d_end + num_mod, d_begin, d_num_pep, thrust::minus<uint32_t>());
+    thrust::transform(d_end, d_end + num_mod, d_begin, d_num_pep, thrust::minus<uint32_t>());
+    thrust::exclusive_scan(d_num_pep, d_num_pep + num_mod, d_num_pep_scan);
+    //for (uint32_t i = 0; i < num_mod; i++) {
+        //std::cout << d_num_pep[i] << std::endl;
+    //}
+
+
+//#ifdef _DEBUG
+    for (uint32_t i = 0; i < num_mod; ++i) {
+        const float target_l = mass + d_mod_delta[i] - eps;
+        const float target_u = mass + d_mod_delta[i] + eps;
+
+        if (d_begin[i] != d_end[i]) {
+            const float beginMass = d_r[d_pep_idx_r_sorted[d_begin[i]]];
+            const float lastMass = d_r[d_pep_idx_r_sorted[d_end[i] - 1]];
+
+            //std::cout << target_l << " " << beginMass << " " << d_begin[i] << " " << d_num_pep[i] << " " << d_end[i] << " " << lastMass << " " << target_u << std::endl;
+            if (!(target_l <= beginMass) ||
+                !(target_u >= lastMass)) {
+                std::cerr << "findBeginEnd doesn't seem to be correct (1)" << std::endl;
+                exit(1);
+            }
+            if (d_begin[i] > 0) {
+                const float beginMass_ = d_r[d_pep_idx_r_sorted[d_begin[i] - 1]];
+                if (!(target_l > beginMass_)) {
+                    std::cerr << "findBeginEnd doesn't seem to be correct (2)" << std::endl;
+                    exit(2);
+                }
+            }
+            if (d_end[i] < num_pep) {
+                const float endMass_ = d_r[d_pep_idx_r_sorted[d_end[i]]];
+                if (!(target_u < endMass_)) {
+                    std::cerr << "findBeginEnd doesn't seem to be correct (3)" << std::endl;
+                    exit(3);
+                }
+            }
+        }
+    }
+//#endif
+    return thrust::reduce(d_num_pep, d_num_pep + num_mod);
+}

@@ -53,6 +53,7 @@ import qualified Foreign.CUDA.Algorithms        as CUDA
 import Debug.Trace
 
 type CandidatesByMass = (Int, DevicePtr Word32)
+type CandidatesByModMass = (DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
 type CandidatesByMod  = (Int, DevicePtr Word32, DevicePtr Word32)
 type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32)
 type IonSeries  = DevicePtr Word32
@@ -66,14 +67,14 @@ type PepModDevice = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float
 -- Search an amino acid sequence database to find the most likely matches to a
 -- given experimental spectrum.
 --
-searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
-searchForMatches cp sdb ddb ms2 = do
+searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> DeviceModInfo -> MS2Data -> IO MatchCollection
+searchForMatches cp sdb ddb dmi ms2 = do
   --matches <- searchWithoutMods cp sdb ddb ms2 
   (t,matches) <- bracketTime $ searchWithoutMods cp sdb ddb ms2 
   --when (verbose cp) $ hPutStrLn stderr ("searchWithoutMods Elapsed time: " ++ showTime t)
 
   --matchesMods <- searchWithMods cp sdb ddb ms2 
-  (t,matchesMods) <- bracketTime $ searchWithMods cp sdb ddb ms2 
+  (t,matchesMods) <- bracketTime $ searchWithMods cp sdb ddb dmi ms2 
   when (verbose cp) $ hPutStrLn stderr ("searchWithMods Elapsed time: " ++ showTime t)
 
   return $ reverse $ sortBy matchScoreOrder $ matches ++ matchesMods
@@ -96,51 +97,40 @@ searchWithoutMods cp sdb ddb ms2 =
 
 --
 --
-searchWithMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
-searchWithMods cp sdb ddb ms2 = do
-  --matches <- mapM (searchAModComb cp sdb ddb ms2) modCombs
-  matches <- mapM search modCombs
+searchWithMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> DeviceModInfo -> MS2Data -> IO MatchCollection
+searchWithMods cp sdb ddb dmi ms2 = 
+  let mass = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
+  in
+  do
+  -- marshall over d_ma, d_ma_mass, num_ma,
+  --               d_mod_ma_count
+  --          calc d_mod_ma_count_sum
+  --          calc d_mod_delta
+  --          sort candidates by residual
+  --
+  -- findCandidates
+  filterCandidateByModMass cp ddb dmi mass $ \candsByModMass -> return []
+  --    by mass
+  --          find beg and end for each modcomb
+  --          calc num_pep for each modcomb
+  --          calc above scanned
+  --filterCandidatesByModability cp ddb dmi candidatesByMass $ \candsByMassAndMod ->
+  --    by modability
+  --          alloc mem 
+  --          calc pep_ma_count
+  --               pep_idx
+  --               pep_mod_idx
+  --          filter pep_cand_idx
+  --genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->
+  -- generate modified candidates
+  --          calc num_mpep for filtered cands
+  --          calc ma_ncomb
+  --          calc na_ncomb_scan
+  --          calc mpep_unrank
+  --mkModSpecXCorr ddb d_mods modifiedCands (ms2charge ms2) (G.length spec)  $ \mspecThry   -> do
+  --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
+  --mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
   
-  return $ concat matches
-  where
-
-    search x = do (t,matches) <- bracketTime $  searchAModComb cp sdb ddb ms2 x
-                  --hPutStrLn stderr ("searchWithMods Elapsed time: " ++ showTime t)
-                  return matches
-
-    comparedbFrag (res1,_,_) (res2,_,_) = compare res1 res2
-    (max_mass,_,_)  = U.maximumBy comparedbFrag $ dbFrag sdb 
-    (min_mass,_,_)  = U.minimumBy comparedbFrag $ dbFrag sdb 
-    max_ma          = maxModableAcids cp
-    ma              = map c2w $ getMA cp
-    ma_mass         = getMA_Mass cp
-    --ma_count = [2,1]
-    --modCombs = [(ma, ma_count, 1123.4)]
-    --[(['A'],[2],343.1)]
-    
-    -- @TODO generate using liftM
-    modCombs  = filter (\(_,_,m) -> if min_mass <= m && m <= max_mass then True else False) $ modCombs_raw 
-    modCombs_raw  = map (\ma_cnt -> (ma, (map fromIntegral ma_cnt), mass - (calcDelta ma_cnt) )) ma_counts
-        where 
-        calcDelta ma_cnt = sum (zipWith (\c m -> m * fromIntegral c) ma_cnt ma_mass)
-    ma_counts  = filter (\c -> if sum c < max_ma then True else False) ma_counts'
-    ma_counts' = tail (addModDimensions ((length ma) - 1) [ replicate (length ma) 0 ])
-
-    addModDimensions :: Int -> [[Int]] -> [[Int]]
-    addModDimensions dim xs = 
-        if dim >= 0 then expand $ addModDimensions (dim-1) xs else xs
-        where
-        expand (c:cs) = [c] ++ map (\cnt -> replace dim cnt c) [1..max_ma] ++ expand cs
-        expand _      = []
-
-    replace :: (Show a) => Int -> a -> [a] -> [a]
-    replace idx val list = x ++ val : ys
-        where
-        (x,_:ys) = splitAt idx list
-
-    mass          = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
-
-
     
 searchAModComb :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> ([Word8], [Word8], Float) -> IO MatchCollection
 searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) = 
@@ -188,6 +178,24 @@ filterCandidateByMass cp db mass action =
   where
     np    = numFragments db
     delta = massTolerance cp
+
+--
+-- Searches for each mass made by modified candidates
+filterCandidateByModMass :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> Float -> (CandidatesByModMass -> IO b) -> IO b
+filterCandidateByModMass cp ddb dmi mass action =
+  let (num_ma, ma, ma_mass) = devModAcids dmi 
+      (num_mod, d_mod_ma_count, _, d_mod_delta) = devModCombs dmi 
+      d_pep_idx_r_sorted = devResIdxSort dmi
+  in
+  CUDA.allocaArray num_mod $ \d_begin ->
+  CUDA.allocaArray num_mod $ \d_end ->
+  CUDA.allocaArray num_mod $ \d_num_pep -> do
+  CUDA.allocaArray num_mod $ \d_num_pep_scan-> do
+  CUDA.findBeginEnd d_begin d_end d_num_pep d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_pep_total -> do
+  action (d_begin, d_end, d_num_pep, d_num_pep_scan)
+  where
+    --np    = numFragments db
+    eps = massTolerance cp
 
 --
 -- Search a subset of peptides for peptides which a specific combination of modifications 

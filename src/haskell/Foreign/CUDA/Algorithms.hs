@@ -12,7 +12,7 @@
 
 module Foreign.CUDA.Algorithms
   (
-    findIndicesInRange, findModablePeptides,
+    findIndicesInRange, findModablePeptides, findBeginEnd,
     calcTotalModCands, genModCands,
     addIons, addModIons, 
     rsort,
@@ -34,6 +34,21 @@ findIndicesInRange a1 a2 a3 a4 a5 =
 
 foreign import ccall unsafe "algorithms.h findIndicesInRange_f"
   findIndicesInRange'_ :: Ptr Float -> Ptr Word32 -> Word32 -> Float -> Float -> IO Word32
+ 
+findBeginEnd :: DevicePtr Word32 -> DevicePtr Word32 -> DevicePtr Word32 -> DevicePtr Word32 -> DevicePtr Float -> DevicePtr Word32 -> Int -> DevicePtr Float -> Int -> Float -> Float -> IO Int
+findBeginEnd a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 =
+  withDevicePtr a1 $ \a1' ->
+  withDevicePtr a2 $ \a2' ->
+  withDevicePtr a3 $ \a3' ->
+  withDevicePtr a4 $ \a4' ->
+  withDevicePtr a5 $ \a5' ->
+  withDevicePtr a6 $ \a6' ->
+  --withDevicePtr a7 $ \a7' ->
+  withDevicePtr a8 $ \a8' ->
+  cIntConv `fmap` findBeginEnd'_ a1' a2' a3' a4' a5' a6' (cIntConv a7) a8' (cIntConv a9) a10 a11
+
+foreign import ccall unsafe "algorithms.h findBeginEnd_f"
+  findBeginEnd'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Float -> Ptr Word32 -> Word32 -> Ptr Float -> Word32 -> Float -> Float -> IO Int
 
 --findModablePeptides d_idx (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_ma d_ma_count >>= \n -> action (d_idx,n)
 findModablePeptides :: DevicePtr Word32                     --- ^ result array, indices to modable peps

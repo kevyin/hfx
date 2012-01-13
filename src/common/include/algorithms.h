@@ -69,6 +69,24 @@ findIndicesInRange_f
     const float         max
 );
 
+uint32_t
+findBeginEnd_f
+(
+    uint32_t            *d_begin_raw,
+    uint32_t            *d_end_raw,
+    uint32_t            *d_num_pep_raw,
+    uint32_t            *d_num_pep_scan_raw,
+
+    const float         *d_r_raw,
+    const uint32_t      *d_pep_idx_r_sorted_raw,
+    const uint32_t      num_pep,
+
+    const float         *d_mod_delta_raw,
+    const uint32_t      num_mod,
+    const float         mass_,
+    const float         eps
+);
+
 /*
  * find from a subset of peptides those which a modification can be applied
  *
