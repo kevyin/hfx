@@ -53,7 +53,7 @@ import qualified Foreign.CUDA.Algorithms        as CUDA
 import Debug.Trace
 
 type CandidatesByMass = (Int, DevicePtr Word32)
-type CandidatesByModMass = (DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
+type CandidatesByModMass = (DevicePtr Word32, DevicePtr Word32, Int, DevicePtr Word32, DevicePtr Word32)
 type CandidatesByMod  = (Int, DevicePtr Word32, DevicePtr Word32)
 type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32)
 type IonSeries  = DevicePtr Word32
@@ -69,8 +69,8 @@ type PepModDevice = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float
 --
 searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> DeviceModInfo -> MS2Data -> IO MatchCollection
 searchForMatches cp sdb ddb dmi ms2 = do
-  --matches <- searchWithoutMods cp sdb ddb ms2 
-  (t,matches) <- bracketTime $ searchWithoutMods cp sdb ddb ms2 
+  matches <- searchWithoutMods cp sdb ddb ms2 
+  --(t,matches) <- bracketTime $ searchWithoutMods cp sdb ddb ms2 
   --when (verbose cp) $ hPutStrLn stderr ("searchWithoutMods Elapsed time: " ++ showTime t)
 
   --matchesMods <- searchWithMods cp sdb ddb ms2 
@@ -101,7 +101,6 @@ searchWithMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> DeviceModInfo -> 
 searchWithMods cp sdb ddb dmi ms2 = 
   let mass = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
   in
-  do
   -- marshall over d_ma, d_ma_mass, num_ma,
   --               d_mod_ma_count
   --          calc d_mod_ma_count_sum
@@ -109,12 +108,12 @@ searchWithMods cp sdb ddb dmi ms2 =
   --          sort candidates by residual
   --
   -- findCandidates
-  filterCandidateByModMass cp ddb dmi mass $ \candsByModMass -> return []
+  filterCandidateByModMass cp ddb dmi mass $ \candsByModMass -> 
   --    by mass
   --          find beg and end for each modcomb
   --          calc num_pep for each modcomb
   --          calc above scanned
-  --filterCandidatesByModability cp ddb dmi candidatesByMass $ \candsByMassAndMod ->
+  filterCandidatesByModability cp ddb dmi candsByModMass $ \candsByMassAndMod -> return []
   --    by modability
   --          alloc mem 
   --          calc pep_ma_count
@@ -131,7 +130,7 @@ searchWithMods cp sdb ddb dmi ms2 =
   --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
   --mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
   
-    
+{-    
 searchAModComb :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> ([Word8], [Word8], Float) -> IO MatchCollection
 searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) = 
   --traceShow ("Searching comb: ", pmod) $
@@ -141,7 +140,7 @@ searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) =
   CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
   CUDA.withVector (U.fromList ma_mass)  $ \d_mod_ma_mass  ->   -- 
   let d_mods = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, d_mod_ma_mass) in
-  filterCandidateByModability cp ddb candidatesByMass d_mods                    $ \candidatesByMassAndMod ->
+  filterCandidatesByModability cp ddb candidatesByMass d_mods                    $ \candidatesByMassAndMod ->
   genModCandidates cp ddb candidatesByMassAndMod d_mods                         $ \modifiedCandidates ->
   mkModSpecXCorr ddb d_mods modifiedCandidates (ms2charge ms2) (G.length spec)  $ \mspecThry   -> do
   --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
@@ -159,6 +158,7 @@ searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) =
     finish (sx,i,u) = liftM (\f -> Match (modifyFragment pmod u f) sx (sp f) pmod u) (lookup sdb i)
     sp              = matchIonSequence cp (ms2charge ms2) peaks
     pmod            = zipWith3 (\a b c -> (w2c a, fromIntegral b, c)) ma ma_count ma_mass
+-}
     
 
 --
@@ -183,8 +183,8 @@ filterCandidateByMass cp db mass action =
 -- Searches for each mass made by modified candidates
 filterCandidateByModMass :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> Float -> (CandidatesByModMass -> IO b) -> IO b
 filterCandidateByModMass cp ddb dmi mass action =
-  let (num_ma, ma, ma_mass) = devModAcids dmi 
-      (num_mod, d_mod_ma_count, _, d_mod_delta) = devModCombs dmi 
+  let -- (num_ma, d_ma, d_ma_mass) = devModAcids dmi 
+      (num_mod, _, _, d_mod_delta) = devModCombs dmi 
       d_pep_idx_r_sorted = devResIdxSort dmi
   in
   CUDA.allocaArray num_mod $ \d_begin ->
@@ -192,7 +192,7 @@ filterCandidateByModMass cp ddb dmi mass action =
   CUDA.allocaArray num_mod $ \d_num_pep -> do
   CUDA.allocaArray num_mod $ \d_num_pep_scan-> do
   CUDA.findBeginEnd d_begin d_end d_num_pep d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_pep_total -> do
-  action (d_begin, d_end, d_num_pep, d_num_pep_scan)
+  action (d_begin, d_end, num_pep_total, d_num_pep, d_num_pep_scan)
   where
     --np    = numFragments db
     eps = massTolerance cp
@@ -207,24 +207,33 @@ filterCandidateByModMass cp ddb dmi mass action =
 -- modifiable acids in the peptide
 --
 --
-filterCandidateByModability :: 
+filterCandidatesByModability :: 
                        ConfigParams 
                     -> DeviceSeqDB 
-                    -> CandidatesByMass     --- ^ subset of peptides, [idx to pep], number of pep
-                    -> PepModDevice               
+                    -> DeviceModInfo
+                    -> CandidatesByModMass     --- ^ subset of peptides, [idx to pep], number of pep
                     -> (CandidatesByMod -> IO b)
                     -> IO b
-filterCandidateByModability cp db (sub_nIdx, d_sub_idx) (mod_num_ma, d_mod_ma, d_mod_ma_count, _, _) action =
-  CUDA.allocaArray sub_nIdx             $ \d_idx      ->     -- filtered results to be returned here
-  CUDA.allocaArray (sub_nIdx*mod_num_ma)      $ \d_pep_ma_count -> -- do -- peptide ma counts
-  CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_mod_ma d_mod_ma_count mod_num_ma >>= \n -> do
+filterCandidatesByModability cp ddb dmi (d_begin, d_end, num_pep_total, d_num_pep, d_num_pep_scan) action =
+  let (num_ma, d_ma, _) = devModAcids dmi 
+      (num_mod, d_mod_ma_count, _, _) = devModCombs dmi 
+      d_pep_idx_r_sorted = devResIdxSort dmi
+  in
+  CUDA.allocaArray num_pep_total $ \d_pep_idx_valid -> -- filtered peptide indices to be returned here
+  CUDA.allocaArray num_pep_total $ \d_pep_idx -> -- idx of peptide to tc tn
+  CUDA.allocaArray num_pep_total $ \d_pep_mod_idx -> -- peptides corresponding modification
+  CUDA.allocaArray (num_pep_total*num_ma) $ \d_pep_ma_count -> 
+  CUDA.findModablePeptides d_pep_idx_valid d_pep_idx d_pep_mod_idx d_pep_ma_count num_pep_total (devIons ddb) (devTerminals ddb) d_pep_idx_r_sorted d_begin d_end d_num_pep_scan d_mod_ma_count num_mod d_ma num_ma >>= \n -> do
+  --CUDA.allocaArray sub_nIdx             $ \d_idx      ->     -- filtered results to be returned here
+  --CUDA.allocaArray (sub_nIdx*mod_num_ma)      $ \d_pep_ma_count -> -- do -- peptide ma counts
+  --CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_mod_ma d_mod_ma_count mod_num_ma >>= \n -> do
     --when (verbose cp) $ hPutStrLn stderr ("filter by modability:\n" ++ 
                                           --"num searched: " ++ show sub_nIdx ++ "\n" ++
                                           --"num modable: " ++ show n ++ "\n" ++
                                           --"pep_ma_count not used: " ++ show (mod_num_ma*(sub_nIdx - n)) ++ "\n") 
     --(t,n) <- bracketTime $ CUDA.findModablePeptides d_idx d_pep_ma_count (devIons db) (devTerminals db) d_sub_idx sub_nIdx d_mod_ma d_mod_ma_count mod_num_ma
     --when (verbose cp) $ hPutStrLn stderr ("findModablePeptides Elapsed time: " ++ showTime t)
-    action (n, d_idx, d_pep_ma_count)
+    action (0, d_begin, d_num_pep)
   --CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-delta) (mass+delta) >>= \n -> action (d_idx,n)
 
 

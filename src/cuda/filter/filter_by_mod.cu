@@ -63,17 +63,19 @@ findModablePeptides_core
 (
     uint32_t            *d_valid,
     uint32_t            *d_pep_ma_count,    // 2d array, count of each ma in each peptide
-
     const uint8_t       *d_ions,
     const uint32_t      *d_tc,
     const uint32_t      *d_tn,
-
-    const uint32_t      *d_sub_idx,
-    const uint32_t      sub_idx_length,
-
+    
     const uint8_t       *d_ma,
-    const uint8_t       *d_ma_count,
-    const uint32_t      ma_length
+    const uint32_t      num_ma,
+
+    const uint32_t      *d_mod_ma_count,
+
+    uint32_t            *d_pep_idx, 
+    uint32_t            *d_pep_mod_idx, 
+
+    uint32_t            num_pep_total
 )
 {
 
@@ -85,18 +87,20 @@ findModablePeptides_core
     const uint32_t vector_id       = thread_id / WARP_SIZE;
     const uint32_t thread_lane     = threadIdx.x & (WARP_SIZE-1);
 
-    assert(MaxMA >= ma_length);
+    assert(MaxMA >= num_ma);
 
     // Keep a count for each mod
     __shared__ volatile uint32_t s_data[MaxMA][BlockSize];
 
-    for (uint32_t row = vector_id; row < sub_idx_length; row += numVectors)
+    for (uint32_t row = vector_id; row < num_pep_total; row += numVectors)
     {
-        const uint32_t idx       = d_sub_idx[row];
+        const uint32_t idx       = d_pep_idx[row];
         const uint32_t row_start = d_tc[idx];
         const uint32_t row_end   = d_tn[idx];
 
-        for (int mod = 0; mod < ma_length; mod++)
+        const uint32_t mod_idx   = d_pep_mod_idx[row];
+
+        for (int mod = 0; mod < num_ma; mod++)
         {
             s_data[mod][threadIdx.x] = 0;
         }
@@ -105,7 +109,7 @@ findModablePeptides_core
         for (uint32_t j = row_start + thread_lane; j < row_end; j += WARP_SIZE)
         {
             bool isModable = true; // assume modability
-            for (int mod = 0; mod < ma_length; mod++) 
+            for (int mod = 0; mod < num_ma; mod++) 
             {
                 uint32_t count = 0;
                 if (d_ma[mod] == d_ions[j])
@@ -119,11 +123,11 @@ findModablePeptides_core
                 // if last aa in peptide
                 if (j == row_end-1) { 
                     // check if not enough aa for mod
-                    if (count >= d_ma_count[mod]) 
+                    if (count >= d_mod_ma_count[mod_idx*num_ma + mod]) 
                     {
                         //isModable = true;
                         // record pep aa counts
-                        d_pep_ma_count[row*ma_length + mod] = count;
+                        d_pep_ma_count[row*num_ma + mod] = count;
                     } else {
                         isModable = false;
                     }
@@ -347,122 +351,37 @@ findModablePeptides_dispatch
 (
     uint32_t            *d_valid,
     uint32_t            *d_pep_ma_count,    // 2d array, count of each ma in each peptide
-
     const uint8_t       *d_ions,
     const uint32_t      *d_tc,
     const uint32_t      *d_tn,
-
-    const uint32_t      *d_sub_idx,
-    const uint32_t      sub_idx_length,
-
+    
     const uint8_t       *d_ma,
-    const uint8_t       *d_ma_count,
-    const uint32_t      ma_length
+    const uint32_t      num_ma,
+
+    const uint32_t      *d_mod_ma_count,
+
+    uint32_t            *d_out_pep_idx_raw, 
+    uint32_t            *d_out_pep_mod_idx_raw, 
+
+    uint32_t            num_pep_total
 )
 {
     uint32_t            threads;
     uint32_t            blocks;
     // control
-    findByMod_control(sub_idx_length, blocks, threads);
+    findByMod_control(num_pep_total, blocks, threads);
 
     // core
     switch (threads)
     {
-    case 128: findModablePeptides_core<128,MaxMA><<<blocks, threads>>>(d_valid, d_pep_ma_count, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case  64: findModablePeptides_core< 64,MaxMA><<<blocks, threads>>>(d_valid, d_pep_ma_count, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case  32: findModablePeptides_core< 32,MaxMA><<<blocks, threads>>>(d_valid, d_pep_ma_count, d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
+    //case 512: findModablePeptides_core<512,MaxMA><<<blocks, threads>>>(d_valid, d_pep_ma_count, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 256: findModablePeptides_core<256,MaxMA><<<blocks, threads>>>(d_valid, d_pep_ma_count, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 128: findModablePeptides_core<128,MaxMA><<<blocks, threads>>>(d_valid, d_pep_ma_count, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case  64: findModablePeptides_core< 64,MaxMA><<<blocks, threads>>>(d_valid, d_pep_ma_count, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case  32: findModablePeptides_core< 32,MaxMA><<<blocks, threads>>>(d_valid, d_pep_ma_count, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    default:
+        assert(!"Non-exhaustive patterns in match");
     }
-}
-
-/**
- * findModablePeptides
- * Check for peptides which have enough of the appropriate acids to 
- * apply a modification
- * record those that are valid and the number of each modable acid in 
- * the peptide
- */ 
-uint32_t
-findModablePeptides
-(
-    uint32_t            *d_out_valid_raw,           // valid indices from sub_idx
-    uint32_t            *d_out_pep_ma_count_raw,    // 2d array, count of each ma in each peptide
-
-    const uint8_t       *d_ions,
-    const uint32_t      *d_tc,
-    const uint32_t      *d_tn,
-
-    const uint32_t      *d_sub_idx,
-    const uint32_t      sub_idx_length,
-
-    const uint8_t       *d_ma,
-    const uint8_t       *d_ma_count,
-    const uint32_t      ma_length
-)
-{
-
-    // non compacted arrays
-    thrust::device_vector<uint32_t> d_valid_v(sub_idx_length);
-    thrust::device_vector<uint32_t> d_pep_ma_count_v(sub_idx_length*ma_length);
-
-
-    // compact
-    switch (ma_length)
-    {
-    case 1: findModablePeptides_dispatch<1>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case 2: findModablePeptides_dispatch<2>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case 3: findModablePeptides_dispatch<3>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case 4: findModablePeptides_dispatch<4>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case 5: findModablePeptides_dispatch<5>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case 6: findModablePeptides_dispatch<6>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case 7: findModablePeptides_dispatch<7>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case 8: findModablePeptides_dispatch<8>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case 9: findModablePeptides_dispatch<9>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    case 10: findModablePeptides_dispatch<10>(d_valid_v.data().get(), d_pep_ma_count_v.data().get(), d_ions, d_tc, d_tn, d_sub_idx, sub_idx_length, d_ma, d_ma_count, ma_length); break;
-    }
-    
-    // compact : prepare thrust ptrs 
-    thrust::device_ptr<const uint32_t>  d_valid(d_valid_v.data().get());
-    thrust::device_ptr<uint32_t>        d_out_valid(d_out_valid_raw);
-
-    thrust::device_ptr<const uint32_t>  d_pep_ma_count(d_pep_ma_count_v.data().get());
-    thrust::device_ptr<uint32_t>        d_out_pep_ma_count(d_out_pep_ma_count_raw);
-   
-    // compact : d_valid
-    // copy into d_out_ if d_valid[i] > 0
-    thrust::device_ptr<const uint32_t> d_sub_idx_th(d_sub_idx); 
-    thrust::device_ptr<uint32_t> d_out_valid_end =
-        thrust::copy_if(d_sub_idx_th, d_sub_idx_th + sub_idx_length, d_valid, d_out_valid, greaterThan<const uint32_t>(0));
-
-    const uint32_t numValid = d_out_valid_end - d_out_valid;
-
-    // compact : d_pep_ma_count
-    // First expand d_valid to a 2d matrix ie same length as d_pep_ma_count
-    // eg for ma_length 3 and d_valid [1,1,0,1] to
-    // [1,1,1,
-    //  1,1,1,
-    //  0,0,0,
-    //  1,1,1]
-    // use this array to determine whether elements in pep_ma_count should be copied
-    const uint32_t N = ma_length*sub_idx_length;
-    thrust::counting_iterator<uint32_t> first(0);
-    thrust::counting_iterator<uint32_t> last = first + N;
-    thrust::device_vector<uint32_t> d_valid_padded_th(N);
-
-    thrust::transform(first, last, d_valid_padded_th.begin(), fillMatrixRow<const uint32_t>(d_valid, ma_length));  
-    
-    thrust::device_ptr<uint32_t> d_out_pep_ma_count_end =
-        thrust::copy_if(d_pep_ma_count, d_pep_ma_count + N, d_valid_padded_th.begin(), d_out_pep_ma_count, greaterThan<const uint32_t>(0));
-
-#ifdef _DEBUG
-    printGPUMemoryUsage();
-
-    checkFindModablePeptides(d_ions, d_tc, d_tn,
-                             d_sub_idx, sub_idx_length,
-                             d_ma, d_ma_count, ma_length,
-                             numValid, d_out_valid, d_out_pep_ma_count);
-#endif
-
-    return numValid;
 }
 
 template <typename T>
@@ -557,11 +476,10 @@ findBeginEnd_f
 
     const float         *d_mod_delta_raw,
     const uint32_t      num_mod,
-    const float         mass_,
+    const float         mass,
     const float         eps
 )
 {
-    float mass = 0;
     if (num_mod == 0) return 0;
     thrust::device_ptr<uint32_t> d_begin(d_begin_raw);
     thrust::device_ptr<uint32_t> d_end(d_end_raw);
@@ -588,7 +506,8 @@ findBeginEnd_f
         const float target_l = mass + d_mod_delta[i] - eps;
         const float target_u = mass + d_mod_delta[i] + eps;
 
-        if (d_begin[i] != d_end[i]) {
+        //std::cerr << "num_pep " << d_num_pep[i] << " scan " << d_num_pep_scan[i] << " beg " << d_begin[i] << " end " << d_end[i] << std::endl;
+        if (d_begin[i] < d_end[i]) {
             const float beginMass = d_r[d_pep_idx_r_sorted[d_begin[i]]];
             const float lastMass = d_r[d_pep_idx_r_sorted[d_end[i] - 1]];
 
@@ -612,8 +531,163 @@ findBeginEnd_f
                     exit(3);
                 }
             }
+        } else if (d_begin[i] > d_end[i]) {
+                    std::cerr << "findBeginEnd doesn't seem to be correct (4)" << std::endl;
+                    exit(4);
+
         }
     }
 //#endif
     return thrust::reduce(d_num_pep, d_num_pep + num_mod);
+}
+
+template <typename T>
+struct fillPepAndModIdx : public thrust::unary_function<T, void>
+{
+    thrust::device_ptr<T> d_out_pep_idx;
+    thrust::device_ptr<T> d_out_pep_mod_idx;
+
+    thrust::device_ptr<const T> d_pep_idx_r_sorted;
+    thrust::device_ptr<const T> d_begin;
+    thrust::device_ptr<const T> d_end;
+    thrust::device_ptr<const T> d_num_pep_scan;
+
+    __host__ __device__
+    fillPepAndModIdx(thrust::device_ptr<T> _pi,
+                     thrust::device_ptr<T> _pmi,
+                     thrust::device_ptr<const T> _pirs,
+                     thrust::device_ptr<const T> _b,
+                     thrust::device_ptr<const T> _e,
+                     thrust::device_ptr<const T> _nps)
+                    : d_out_pep_idx(_pi), d_out_pep_mod_idx(_pmi), d_pep_idx_r_sorted(_pirs), d_begin(_b), d_end(_e), d_num_pep_scan(_nps) {}
+
+    __host__ __device__ void operator() (T mod_idx)
+    {
+        T pep_idx;
+        T out_idx = d_num_pep_scan[mod_idx];
+        for (T i = d_begin[mod_idx]; i != d_end[mod_idx]; ++i) {
+            pep_idx = d_pep_idx_r_sorted[i];
+
+            *((d_out_pep_idx + out_idx).get()) = pep_idx;
+            *((d_out_pep_mod_idx + out_idx).get()) = mod_idx;
+            ++out_idx;
+        }
+    }
+};
+
+/**
+ * findModablePeptides
+ * Check for peptides which have enough of the appropriate acids to 
+ * apply a modification
+ * record those that are valid and the number of each modable acid in 
+ * the peptide
+ */ 
+uint32_t
+findModablePeptides
+(
+    uint32_t            *d_out_valid_raw, // valid peptide array indices
+    uint32_t            *d_out_pep_idx_raw, 
+    uint32_t            *d_out_pep_mod_idx_raw, 
+    uint32_t            *d_out_pep_ma_count_raw,   // 2d array, count of each ma in each peptide
+    uint32_t            num_pep_total,
+
+    const uint8_t       *d_ions,
+    const uint32_t      *d_tc,
+    const uint32_t      *d_tn,
+
+    const uint32_t      *d_pep_idx_r_sorted_raw,
+
+    const uint32_t      *d_begin_raw,
+    const uint32_t      *d_end_raw,
+    const uint32_t      *d_num_pep_scan_raw,
+    const uint32_t      *d_mod_ma_count,
+    const uint32_t      num_mod,
+
+    const uint8_t       *d_ma,
+    const uint32_t      num_ma
+)
+{
+    thrust::device_ptr<uint32_t> d_out_valid(d_out_valid_raw);
+    thrust::device_ptr<uint32_t> d_out_pep_idx(d_out_pep_idx_raw);
+    thrust::device_ptr<uint32_t> d_out_pep_mod_idx(d_out_pep_mod_idx_raw);
+
+    thrust::device_ptr<const uint32_t> d_pep_idx_r_sorted(d_pep_idx_r_sorted_raw);
+    thrust::device_ptr<const uint32_t> d_begin(d_begin_raw);
+    thrust::device_ptr<const uint32_t> d_end(d_end_raw);
+    thrust::device_ptr<const uint32_t> d_num_pep_scan(d_num_pep_scan_raw);
+
+    // fill arrays for use later on
+    thrust::counting_iterator<uint32_t> first(0);
+    thrust::counting_iterator<uint32_t> last = first + num_mod;
+    thrust::for_each(first, last, fillPepAndModIdx<uint32_t>(d_out_pep_idx, d_out_pep_mod_idx, d_pep_idx_r_sorted, d_begin, d_end, d_num_pep_scan));
+
+    //for (uint32_t i = 0; i < num_pep_total; ++i) {
+        //std::cout << " pep idx " << d_out_pep_idx[i] << " mod_idx " << d_out_pep_mod_idx[i] << std::endl;
+    //}
+
+    // non compacted arrays
+    thrust::device_vector<uint32_t> d_valid_v(num_pep_total);
+    //thrust::device_vector<uint32_t> d_pep_ma_count_v(num_pep_total*num_ma);
+    //thrust::device_ptr<uint32_t> d_out_pep_ma_count(d_out_pep_ma_count_raw);
+
+    switch (num_ma)
+    {
+    case 1: findModablePeptides_dispatch<1>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 2: findModablePeptides_dispatch<2>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 3: findModablePeptides_dispatch<3>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 4: findModablePeptides_dispatch<4>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 5: findModablePeptides_dispatch<5>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 6: findModablePeptides_dispatch<6>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 7: findModablePeptides_dispatch<7>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 8: findModablePeptides_dispatch<8>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 9: findModablePeptides_dispatch<9>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    case 10: findModablePeptides_dispatch<10>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
+    default:
+        assert(!"Non-exhaustive patterns in match");
+    }
+
+    //// compact : prepare thrust ptrs 
+    //thrust::device_ptr<const uint32_t>  d_valid(d_valid_v.data().get());
+    //thrust::device_ptr<uint32_t>        d_out_valid(d_out_valid_raw);
+
+    //thrust::device_ptr<const uint32_t>  d_pep_ma_count(d_pep_ma_count_v.data().get());
+    //thrust::device_ptr<uint32_t>        d_out_pep_ma_count(d_out_pep_ma_count_raw);
+   
+    // compact : d_valid
+    // copy if d_valid[i] > 0
+    last = first + num_pep_total;
+    thrust::device_ptr<uint32_t> d_out_valid_end =
+        thrust::copy_if(first, last, d_valid_v.begin(), d_out_valid, greaterThan<const uint32_t>(0));
+
+    const uint32_t numValid = d_out_valid_end - d_out_valid;
+
+    return numValid;
+    //// compact : d_pep_ma_count
+    //// First expand d_valid to a 2d matrix ie same length as d_pep_ma_count
+    //// eg for ma_length 3 and d_valid [1,1,0,1] to
+    //// [1,1,1,
+    ////  1,1,1,
+    ////  0,0,0,
+    ////  1,1,1]
+    //// use this array to determine whether elements in pep_ma_count should be copied
+    //const uint32_t N = ma_length*sub_idx_length;
+    //thrust::counting_iterator<uint32_t> first(0);
+    //thrust::counting_iterator<uint32_t> last = first + N;
+    //thrust::device_vector<uint32_t> d_valid_padded_th(N);
+
+    //thrust::transform(first, last, d_valid_padded_th.begin(), fillMatrixRow<const uint32_t>(d_valid, ma_length));  
+    
+    //thrust::device_ptr<uint32_t> d_out_pep_ma_count_end =
+        //thrust::copy_if(d_pep_ma_count, d_pep_ma_count + N, d_valid_padded_th.begin(), d_out_pep_ma_count, greaterThan<const uint32_t>(0));
+
+//#ifdef _DEBUG
+    //printGPUMemoryUsage();
+
+    //checkFindModablePeptides(d_ions, d_tc, d_tn,
+                             //d_sub_idx, sub_idx_length,
+                             //d_ma, d_ma_count, ma_length,
+                             //numValid, d_out_valid, d_out_pep_ma_count);
+//#endif
+
+    //return numValid;
 }

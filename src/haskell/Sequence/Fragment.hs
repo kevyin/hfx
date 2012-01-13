@@ -136,7 +136,7 @@ data DeviceModInfo = DevModInfo
   {
     -- num_ma, d_ma, d_ma_mass (mass change)
     devModAcids         :: (Int, CUDA.DevicePtr Word8, CUDA.DevicePtr Float), 
-    -- num_mod, d_mod_ma_count (num_ma by num_mod), d_mod_ma_count_sum, d_mod_delta)
+    -- num_mod, d_mod_ma_count (size: num_ma X num_mod), d_mod_ma_count_sum, d_mod_delta)
     devModCombs         :: (Int, CUDA.DevicePtr Word32, CUDA.DevicePtr Word32, CUDA.DevicePtr Float), 
     devResIdxSort       :: CUDA.DevicePtr Word32
   }
