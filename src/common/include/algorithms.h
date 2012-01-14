@@ -115,14 +115,18 @@ findModablePeptides
 uint32_t
 calcTotalModCands
 (
-    uint32_t          *d_out_pep_num_mpep,
-    uint32_t          *d_out_pep_ma_num_comb,
-    uint32_t          *d_out_pep_ma_num_comb_scan,
-    const uint32_t    nPep,                   // number of peptides
-    const uint32_t    *d_pep_ma_count,        // 2d array of ma count in each pep
-    const uint8_t     *d_mod_ma_count,             
-    const uint32_t    mod_num_ma
-);
+    uint32_t          *d_out_pep_num_mpep_raw,              // number of modified peptides each peptide will generate
+    uint32_t          *d_out_pep_ma_num_comb_raw,           // 2D array of number of combinations each ma can make,
+    uint32_t          *d_out_pep_ma_num_comb_scan_raw,      // 2D array of above scanned by peptide
+    const uint32_t    *d_mod_ma_count_raw,
+    const uint32_t    *d_pep_idx_raw,
+    const uint32_t    *d_pep_mod_idx_raw,
+    const uint32_t    *d_pep_ma_count_raw,
+    const uint32_t    *d_pep_valid_idx_raw,
+    const uint32_t    nPep,                             // number of peptides (unmodified)
+    const uint32_t    num_mod,
+    const uint32_t    num_ma
+); 
 
 void
 genModCands
