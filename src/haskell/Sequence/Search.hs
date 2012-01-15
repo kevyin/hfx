@@ -55,7 +55,7 @@ import Debug.Trace
 type CandidatesByMass = (Int, DevicePtr Word32)
 type CandidatesByModMass = (DevicePtr Word32, DevicePtr Word32, Int, DevicePtr Word32, DevicePtr Word32)
 type CandidatesModable = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
-type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32)
+type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
 type IonSeries  = DevicePtr Word32
 
 type PepModDevice = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float)
@@ -120,13 +120,13 @@ searchWithMods cp sdb ddb dmi ms2 =
   --               pep_idx
   --               pep_mod_idx
   --          filter pep_cand_idx
-  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands -> return []
+  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->
   -- generate modified candidates
   --          calc num_mpep for filtered cands
   --          calc ma_ncomb
   --          calc na_ncomb_scan
   --          calc mpep_unrank
-  --mkModSpecXCorr ddb d_mods modifiedCands (ms2charge ms2) (G.length spec)  $ \mspecThry   -> do
+  mkModSpecXCorr ddb d_mods modifiedCands (ms2charge ms2) (G.length spec)  $ \mspecThry   -> return [] -- do
   --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
   --mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
   
@@ -261,8 +261,9 @@ genModCandidates cp ddb dmi (num_pep, d_pep_valid_idx, d_pep_idx, d_pep_mod_idx,
   CUDA.prepareGenMod d_mpep_pep_idx d_mpep_rank d_mpep_ith_valid d_mpep_mod_ma_count_sum d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_valid_idx d_pep_num_mpep num_pep total >>= \ ma_count_sum_total ->
 
   CUDA.allocaArray (total*ma_count_sum_total) $ \d_mpep_unrank -> do
-    CUDA.genModCands d_mpep_unrank d_mpep_pep_idx d_mpep_rank total d_pep_idx d_pep_mod_idx d_pep_ma_count  d_pep_valid_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan d_mod_ma_count d_mod_ma_count_sum_scan num_pep num_ma ma_count_sum_total
-    action (total, d_pep_idx, d_pep_ma_num_comb_scan)
+    CUDA.genModCands d_mpep_unrank d_mpep_unrank d_mod_ma_count d_mpep_ith_valid d_mpep_rank d_mpep_mod_ma_count_sum_scan d_pep_mod_idx d_pep_ma_count d_pep_valid_idx d_pep_ma_num_comb_scan total num_ma 
+
+    action (total, d_mpep_pep_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum, d_mpep_mod_ma_count_sum_scan)
       --(t,_) <- bracketTime $ CUDA.genModCands d_mpep_idx d_mpep_rank d_mpep_unrank total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan num_pep d_pep_ma_count d_mod_ma_count mod_num_ma
       --when (verbose cp) $ hPutStrLn stderr ("genModCands Elapsed time: " ++ showTime t)
       --action (total, d_mpep_idx, d_mpep_unrank)
@@ -274,11 +275,11 @@ mkModSpecXCorr :: DeviceSeqDB
                -> Int
                -> (IonSeries -> IO b)
                -> IO b
-mkModSpecXCorr db (mod_num_ma, d_mod_ma, d_mod_ma_count,_ , d_mod_ma_mass) (total, d_mpep_idx, d_mpep_unrank) chrg len action =
+mkModSpecXCorr db (mod_num_ma, d_mod_ma, d_mod_ma_count,_ , d_mod_ma_mass) (total, d_mpep_pep_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum, d_mpep_mod_ma_count_sum_scan) chrg len action =
   CUDA.allocaArray n $ \d_mspec -> do
     let bytes = fromIntegral $ n * CUDA.sizeOfPtr d_mspec
     CUDA.memset  d_mspec bytes 0
-    CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_idx d_mpep_unrank total d_mod_ma d_mod_ma_count d_mod_ma_mass mod_num_ma ch len
+    CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_pep_idx d_mpep_unrank total d_mod_ma d_mod_ma_count d_mod_ma_mass mod_num_ma ch len
     --(t,_) <- bracketTime $ CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_idx d_mpep_unrank total d_mod_ma d_mod_ma_count d_mod_ma_mass mod_num_ma ch len
     --hPutStrLn stderr ("addModIons Elapsed time: " ++ showTime t)
 
@@ -341,7 +342,7 @@ sequestXC cp (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatches
 
 -- Modified candidates version
 sequestXCMod :: ConfigParams -> ModCandidates -> Int -> Spectrum -> IonSeries -> IO [(Float,Int,[Int])]
-sequestXCMod cp (nMCands, d_mpep_idx, d_mpep_unrank) sum_ma_count expr d_thry = let 
+sequestXCMod cp (nMCands, d_mpep_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum, d_mpep_mod_ma_count_sum_scan) sum_ma_count expr d_thry = let 
   n' = max (numMatches cp) (numMatchesDetail cp) 
   h_mpep_idx_idx = G.generate nMCands (\i -> cIntConv i) :: (U.Vector Word32) in
     -- There may be no candidates as a result of bad database search parameters,

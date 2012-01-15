@@ -129,7 +129,7 @@ add_ma_ranks
 (
     uint32_t                            *d_out_ma_ranks_row,
     const uint32_t                      mpep_rank,
-    thrust::device_ptr<const uint32_t>  d_pep_ma_num_comb_scan_row,
+    const uint32_t                      *d_pep_ma_num_comb_scan_row,
     const uint32_t                      mod_num_ma
 )
 {
@@ -159,58 +159,66 @@ add_ma_ranks
 template <typename T, uint32_t NumMA>
 struct add_mpep_unrank: public thrust::unary_function<T, uint32_t>
 {
-    thrust::device_ptr<uint32_t>          d_out_mpep_unrank;
+    uint32_t        *d_out_mpep_unrank;
 
-    //thrust::device_ptr<const uint32_t>    d_pep_ma_num_comb;
-    thrust::device_ptr<const uint32_t>    d_pep_ma_num_comb_scan;
-    thrust::device_ptr<const uint32_t>    d_mpep_rank;
-    thrust::device_ptr<const uint32_t>    d_mpep_rank_ith_pep;
+    const uint32_t  *d_mod_ma_count;
 
-    thrust::device_ptr<const uint32_t>    d_pep_ma_count;
+    const uint32_t  *d_mpep_ith_valid;
+    const uint32_t  *d_mpep_rank;
+    const uint32_t  *d_mpep_mod_ma_count_sum_scan;
 
-    thrust::device_ptr<const uint8_t>     d_mod_ma_count;
-    const uint32_t                        mod_num_ma;
+    const uint32_t  *d_pep_mod_idx;
+    const uint32_t  *d_pep_ma_count;
 
-    const uint32_t                        sum_mod_ma_count;
-
+    const uint32_t  *d_pep_valid_idx;
+    const uint32_t  *d_pep_ma_num_comb_scan;
 
     __host__ __device__
-    add_mpep_unrank (thrust::device_ptr<uint32_t>       _out_mpep_unrank, 
+    add_mpep_unrank (uint32_t        *_omu,
+                     const uint32_t  *_mmc,
+                     const uint32_t  *_miv,
+                     const uint32_t  *_mr,
+                     const uint32_t  *_mmmcss,
+                 
+                     const uint32_t  *_pmi,
+                     const uint32_t  *_pmc,
 
-                     thrust::device_ptr<const uint32_t> _pep_ma_num_comb_scan,
-                     thrust::device_ptr<const uint32_t> _mpep_rank,
-                     thrust::device_ptr<const uint32_t> _mpep_rank_ith_pep,
-                     thrust::device_ptr<const uint32_t> _pep_ma_count,
-                     thrust::device_ptr<const uint8_t>  _mod_ma_count,
-                     const uint32_t                     _mod_num_ma,
-                     const uint32_t                     _sum_mod_ma_count) : 
-                     d_out_mpep_unrank      (_out_mpep_unrank), 
-                     d_pep_ma_num_comb_scan (_pep_ma_num_comb_scan),
-                     d_mpep_rank            (_mpep_rank),
-                     d_mpep_rank_ith_pep    (_mpep_rank_ith_pep),
-                     d_pep_ma_count         (_pep_ma_count),
-                     d_mod_ma_count         (_mod_ma_count),
-                     mod_num_ma             (_mod_num_ma),
-                     sum_mod_ma_count       (_sum_mod_ma_count) {}
+                     const uint32_t  *_pvi,
+                     const uint32_t  *_pmncs) : 
+                     d_out_mpep_unrank(_omu),
+                     d_mod_ma_count(_mmc),
+                     d_mpep_ith_valid(_miv),
+                     d_mpep_rank(_mr),
+                     d_mpep_mod_ma_count_sum_scan(_mmmcss),
+                     d_pep_mod_idx(_pmi),
+                     d_pep_ma_count(_pmc),
+
+                     d_pep_valid_idx(_pvi),
+                     d_pep_ma_num_comb_scan(_pmncs) {}
 
     __host__ __device__ uint32_t operator() (T mpep)
     {
-        uint32_t mpep_rank = d_mpep_rank[mpep];
-        uint32_t ith_pep   = d_mpep_rank_ith_pep[mpep];
+        const uint32_t ith_valid = d_mpep_ith_valid[mpep];
+        const uint32_t ith_pep   = d_pep_valid_idx[ith_valid];
+        const uint32_t mpep_rank = d_mpep_rank[mpep];
+        const uint32_t pep_mod_idx = d_pep_mod_idx[ith_pep];
 
         uint32_t d_ma_ranks[NumMA];
-        add_ma_ranks(d_ma_ranks, mpep_rank, d_pep_ma_num_comb_scan + d_mpep_rank_ith_pep[mpep]*mod_num_ma, mod_num_ma);
+        add_ma_ranks(d_ma_ranks, mpep_rank, d_pep_ma_num_comb_scan + ith_valid*NumMA, NumMA);
+
+        uint32_t start = d_mpep_mod_ma_count_sum_scan[mpep];
 
         uint32_t unrank_pos = 0;
         
         // foreach ma, unrank and add to mpep_unrank
-        for (uint32_t i = 0; i < mod_num_ma; ++i)
+        for (uint32_t i = 0; i < NumMA; ++i)
         {
-            unrankComb((d_out_mpep_unrank + mpep*sum_mod_ma_count + unrank_pos).get(), 
-                       d_pep_ma_count[ith_pep*mod_num_ma + i], 
-                       d_mod_ma_count[i], 
+            const uint32_t mod_ma_count = d_mod_ma_count[pep_mod_idx*NumMA + i]; 
+            unrankComb((d_out_mpep_unrank + start + unrank_pos), 
+                       d_pep_ma_count[ith_pep*NumMA + i], 
+                       mod_ma_count,
                        d_ma_ranks[i]);
-            unrank_pos += d_mod_ma_count[i];
+            unrank_pos += mod_ma_count;
         }
         
         return mpep;
@@ -221,74 +229,25 @@ struct add_mpep_unrank: public thrust::unary_function<T, uint32_t>
 void
 genModCands
 (                                                                     
-    uint32_t        *d_out_mpep_idx,
-    uint32_t        *d_out_mpep_rank,
     uint32_t        *d_out_mpep_unrank,
-    const uint32_t  total,
 
-    const uint32_t  *d_pep_idx,
-    const uint32_t  *d_pep_num_mpep,
-    const uint32_t  *d_pep_ma_num_comb,
-    const uint32_t  *d_pep_ma_num_comb_scan,
-    const uint32_t  num_pep,
-   
+    const uint32_t   *d_mod_ma_count,             
+
+    const uint32_t  *d_mpep_ith_valid,
+    const uint32_t  *d_mpep_rank,
+    const uint32_t  *d_mpep_mod_ma_count_sum_scan,
+
+    const uint32_t  *d_pep_mod_idx,
     const uint32_t  *d_pep_ma_count,        // 2d array of ma count in each pep
 
-    const uint8_t   *d_mod_ma_count,             
+    const uint32_t  *d_pep_valid_idx,
+    const uint32_t  *d_pep_ma_num_comb_scan,
+
+    const uint32_t  total,
     const uint32_t  mod_num_ma
 )
 {
-    thrust::device_ptr<uint32_t> d_out_mpep_idx_th(d_out_mpep_idx);
-    thrust::device_ptr<uint32_t> d_out_mpep_rank_th(d_out_mpep_rank);
-    thrust::device_ptr<uint32_t> d_out_mpep_unrank_th(d_out_mpep_unrank);
-   
-    thrust::device_ptr<const uint32_t> d_pep_idx_th(d_pep_idx);
-    thrust::device_ptr<const uint32_t> d_pep_num_mpep_th(d_pep_num_mpep);
-    thrust::device_ptr<const uint32_t> d_pep_ma_num_comb_th(d_pep_ma_num_comb);
-    thrust::device_ptr<const uint32_t> d_pep_ma_num_comb_scan_th(d_pep_ma_num_comb_scan);
 
-    thrust::device_ptr<const uint32_t> d_pep_ma_count_th(d_pep_ma_count);
-    thrust::device_ptr<const uint8_t>  d_mod_ma_count_th(d_mod_ma_count);
-
-
-
-    thrust::host_vector<uint32_t> h_mpep_rank;
-    thrust::host_vector<uint32_t> h_mpep_rank_ith_pep; // helper vector, corres pep for each mpep_rank
-    thrust::host_vector<uint32_t> h_mpep_idx;
-
-    for (uint32_t i = 0; i < num_pep; i++)
-    {
-        for (uint32_t k = 0; k < d_pep_num_mpep_th[i]; k++)
-        {
-            // add mpep_rank
-            h_mpep_rank.push_back(k);
-            // add mpep_rank_ith_pep
-            h_mpep_rank_ith_pep.push_back(i);
-            // add idx
-            h_mpep_idx.push_back(d_pep_idx_th[i]);
-        }                      
-    }
-    if (h_mpep_rank.size() != total) {
-        std::cerr << "mpep_rankvector not the correct length" << std::endl;
-        exit(1);
-    }
-
-    // copy to device idx
-    thrust::copy(h_mpep_idx.begin(), h_mpep_idx.end(), d_out_mpep_idx_th);
-
-    // copy to device mpep_rank
-    thrust::copy(h_mpep_rank.begin(), h_mpep_rank.end(), d_out_mpep_rank_th);
-
-    // copy to device mpep_rank_ith_pep
-    //thrust::device_vector<uint32_t> d_mpep_rank_ith_pep_th(total);
-    //thrust::copy(mpep_rank_ith_pep.begin(), mpep_rank_ith_pep.end(), d_mpep_rank_ith_pep_th.data());
-    thrust::device_vector<uint32_t> d_mpep_rank_ith_pep_th = h_mpep_rank_ith_pep;
-
-    // unrank mpep_rank and generate encoding which represents which acids are to be modified 
-    //
-    //
-    uint32_t sum_mod_ma_count = thrust::reduce(d_mod_ma_count_th, d_mod_ma_count_th + mod_num_ma);
-    //
     // Add an unrank to each mpep.
     // call kernel to each mpep + mpep_rank combination
     // index to mpep_rank and mpep_idx array
@@ -296,88 +255,19 @@ genModCands
     thrust::counting_iterator<uint32_t> last = first + total;
     switch (mod_num_ma)
     {
-    case 1: thrust::for_each(first, last, add_mpep_unrank<uint32_t,1>(d_out_mpep_unrank_th, d_pep_ma_num_comb_scan_th, d_out_mpep_rank_th, d_mpep_rank_ith_pep_th.data(), d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma, sum_mod_ma_count)); 
-    case 2: thrust::for_each(first, last, add_mpep_unrank<uint32_t,2>(d_out_mpep_unrank_th, d_pep_ma_num_comb_scan_th, d_out_mpep_rank_th, d_mpep_rank_ith_pep_th.data(), d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma, sum_mod_ma_count)); 
-    case 3: thrust::for_each(first, last, add_mpep_unrank<uint32_t,3>(d_out_mpep_unrank_th, d_pep_ma_num_comb_scan_th, d_out_mpep_rank_th, d_mpep_rank_ith_pep_th.data(), d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma, sum_mod_ma_count)); 
-    case 4: thrust::for_each(first, last, add_mpep_unrank<uint32_t,4>(d_out_mpep_unrank_th, d_pep_ma_num_comb_scan_th, d_out_mpep_rank_th, d_mpep_rank_ith_pep_th.data(), d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma, sum_mod_ma_count)); 
-    case 5: thrust::for_each(first, last, add_mpep_unrank<uint32_t,5>(d_out_mpep_unrank_th, d_pep_ma_num_comb_scan_th, d_out_mpep_rank_th, d_mpep_rank_ith_pep_th.data(), d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma, sum_mod_ma_count)); 
-    case 6: thrust::for_each(first, last, add_mpep_unrank<uint32_t,6>(d_out_mpep_unrank_th, d_pep_ma_num_comb_scan_th, d_out_mpep_rank_th, d_mpep_rank_ith_pep_th.data(), d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma, sum_mod_ma_count)); 
-    case 7: thrust::for_each(first, last, add_mpep_unrank<uint32_t,7>(d_out_mpep_unrank_th, d_pep_ma_num_comb_scan_th, d_out_mpep_rank_th, d_mpep_rank_ith_pep_th.data(), d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma, sum_mod_ma_count)); 
-    case 8: thrust::for_each(first, last, add_mpep_unrank<uint32_t,8>(d_out_mpep_unrank_th, d_pep_ma_num_comb_scan_th, d_out_mpep_rank_th, d_mpep_rank_ith_pep_th.data(), d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma, sum_mod_ma_count)); 
-    case 9: thrust::for_each(first, last, add_mpep_unrank<uint32_t,9>(d_out_mpep_unrank_th, d_pep_ma_num_comb_scan_th, d_out_mpep_rank_th, d_mpep_rank_ith_pep_th.data(), d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma, sum_mod_ma_count)); 
-    case 10: thrust::for_each(first, last, add_mpep_unrank<uint32_t,10>(d_out_mpep_unrank_th, d_pep_ma_num_comb_scan_th, d_out_mpep_rank_th, d_mpep_rank_ith_pep_th.data(), d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma, sum_mod_ma_count)); 
+    case 1: thrust::for_each(first, last, add_mpep_unrank<uint32_t,1>(d_out_mpep_unrank, d_mod_ma_count, d_mpep_ith_valid, d_mpep_rank, d_mpep_mod_ma_count_sum_scan, d_pep_mod_idx, d_pep_ma_count, d_pep_valid_idx, d_pep_ma_num_comb_scan));
+    case 2: thrust::for_each(first, last, add_mpep_unrank<uint32_t,2>(d_out_mpep_unrank, d_mod_ma_count, d_mpep_ith_valid, d_mpep_rank, d_mpep_mod_ma_count_sum_scan, d_pep_mod_idx, d_pep_ma_count, d_pep_valid_idx, d_pep_ma_num_comb_scan));
+    case 3: thrust::for_each(first, last, add_mpep_unrank<uint32_t,3>(d_out_mpep_unrank, d_mod_ma_count, d_mpep_ith_valid, d_mpep_rank, d_mpep_mod_ma_count_sum_scan, d_pep_mod_idx, d_pep_ma_count, d_pep_valid_idx, d_pep_ma_num_comb_scan));
+    case 4: thrust::for_each(first, last, add_mpep_unrank<uint32_t,4>(d_out_mpep_unrank, d_mod_ma_count, d_mpep_ith_valid, d_mpep_rank, d_mpep_mod_ma_count_sum_scan, d_pep_mod_idx, d_pep_ma_count, d_pep_valid_idx, d_pep_ma_num_comb_scan));
+    case 5: thrust::for_each(first, last, add_mpep_unrank<uint32_t,5>(d_out_mpep_unrank, d_mod_ma_count, d_mpep_ith_valid, d_mpep_rank, d_mpep_mod_ma_count_sum_scan, d_pep_mod_idx, d_pep_ma_count, d_pep_valid_idx, d_pep_ma_num_comb_scan));
+    case 6: thrust::for_each(first, last, add_mpep_unrank<uint32_t,6>(d_out_mpep_unrank, d_mod_ma_count, d_mpep_ith_valid, d_mpep_rank, d_mpep_mod_ma_count_sum_scan, d_pep_mod_idx, d_pep_ma_count, d_pep_valid_idx, d_pep_ma_num_comb_scan));
+    case 7: thrust::for_each(first, last, add_mpep_unrank<uint32_t,7>(d_out_mpep_unrank, d_mod_ma_count, d_mpep_ith_valid, d_mpep_rank, d_mpep_mod_ma_count_sum_scan, d_pep_mod_idx, d_pep_ma_count, d_pep_valid_idx, d_pep_ma_num_comb_scan));
+    case 8: thrust::for_each(first, last, add_mpep_unrank<uint32_t,8>(d_out_mpep_unrank, d_mod_ma_count, d_mpep_ith_valid, d_mpep_rank, d_mpep_mod_ma_count_sum_scan, d_pep_mod_idx, d_pep_ma_count, d_pep_valid_idx, d_pep_ma_num_comb_scan));
+    case 9: thrust::for_each(first, last, add_mpep_unrank<uint32_t,9>(d_out_mpep_unrank, d_mod_ma_count, d_mpep_ith_valid, d_mpep_rank, d_mpep_mod_ma_count_sum_scan, d_pep_mod_idx, d_pep_ma_count, d_pep_valid_idx, d_pep_ma_num_comb_scan));
+    case 10: thrust::for_each(first, last, add_mpep_unrank<uint32_t,10>(d_out_mpep_unrank, d_mod_ma_count, d_mpep_ith_valid, d_mpep_rank, d_mpep_mod_ma_count_sum_scan, d_pep_mod_idx, d_pep_ma_count, d_pep_valid_idx, d_pep_ma_num_comb_scan));
     default:
         assert(!"Maximum number of variable acids is 10");
     }
 
-#ifdef _DEBUG
-    std::cout << "checking genModCands" << std::endl;
-
-    thrust::host_vector<uint32_t> h_check_mpep_unrank_th;
-    thrust::host_vector<uint32_t> h_check_mpep_rank_th;
-
-    for (uint32_t i = 0; i < num_pep; i++) { // for each pep
-        for (uint32_t r = 0; r < d_pep_num_mpep_th[i]; ++r) { // foreach mpep
-            // get unranks 
-            thrust::host_vector<uint32_t> unrank_tmp(sum_mod_ma_count);
-            uint32_t x = r; //mpep_rank
-            uint32_t idx_start = 0;
-            for (uint32_t j = 0; j < mod_num_ma; ++j) { // for each ma
-                uint32_t ma_rank;
-                if (j != mod_num_ma - 1) {
-                    uint32_t next = d_pep_ma_num_comb_scan_th[i*mod_num_ma + j + 1];
-                    if(x >= next) {
-                        ma_rank = x / next;
-                        x = x % next;
-                    } else {
-                        ma_rank = 0;
-                    }
-
-                } else {
-                    ma_rank = x;
-                }
-
-
-                unrankComb(unrank_tmp.data() + idx_start,
-                           d_pep_ma_count_th[i*mod_num_ma +j],
-                           d_mod_ma_count_th[j],
-                           ma_rank);
-                idx_start += d_mod_ma_count_th[j];
-            }
-
-            h_check_mpep_rank_th.push_back(r);
-            // add unranks
-            h_check_mpep_unrank_th.insert(h_check_mpep_unrank_th.end(), unrank_tmp.begin(), unrank_tmp.end());
-        }
-        
-    }
-
-    thrust::device_vector<uint32_t> d_check_mpep_unrank_th = h_check_mpep_unrank_th;
-    if (!thrust::equal(d_check_mpep_unrank_th.begin(), d_check_mpep_unrank_th.end(), d_out_mpep_unrank_th)) {
-        std::cerr << "mpep_unrank doesn't seem to be correct" << std::endl;
-
-        // print
-        for (uint32_t i = 0; i < total; i++) {
-            std::cout << "ith pep, mpep_idx, out_mpep_rank, check_mpep_rank" << std::endl;
-            std::cout << d_mpep_rank_ith_pep_th[i] << " " << d_out_mpep_idx_th[i] << " " << d_out_mpep_rank_th[i] << " check " << h_check_mpep_rank_th[i] << std::endl;
-            std::cout << "unrank out   ";
-            for (uint32_t j = 0; j < sum_mod_ma_count; ++j) {
-                std::cout << d_out_mpep_unrank_th[i*sum_mod_ma_count + j] << " " ;
-            }
-            std::cout << std::endl;
-
-            std::cout << "unrank check ";
-            for (uint32_t j = 0; j < sum_mod_ma_count; ++j) {
-                std::cout << d_check_mpep_unrank_th[i*sum_mod_ma_count + j] << " " ;
-            }
-            std::cout << std::endl << std::endl;
-        }
-        std::cout << std::endl;
-        exit(1);
-    }
-
-
-#endif
-    
 }
 

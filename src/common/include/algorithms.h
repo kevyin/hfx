@@ -133,7 +133,7 @@ prepareGenMod
 (
     uint32_t          *d_out_mpep_pep_idx,
     uint32_t          *d_out_mpep_rank,
-    uint32_t          *d_out_mpep_ith_valid;
+    uint32_t          *d_out_mpep_ith_valid,
     uint32_t          *d_out_mpep_mod_ma_count_sum,
     uint32_t          *d_out_mpep_mod_ma_count_sum_scan,
 
@@ -151,24 +151,22 @@ prepareGenMod
 void
 genModCands
 (                                                                     
-    uint32_t        *d_out_mpep_idx,
-    uint32_t        *d_out_mpep_rank,
     uint32_t        *d_out_mpep_unrank,
-    const uint32_t  total,
 
-    const uint32_t  *d_pep_idx,
+    const uint32_t   *d_mod_ma_count,             
+
+    const uint32_t  *d_mpep_ith_valid,
+    const uint32_t  *d_mpep_rank,
+    const uint32_t  *d_mpep_mod_ma_count_sum_scan,
+
     const uint32_t  *d_pep_mod_idx,
-    const uint32_t  *d_pep_ma_count,
+    const uint32_t  *d_pep_ma_count,        // 2d array of ma count in each pep
+
     const uint32_t  *d_pep_valid_idx,
-    const uint32_t  *d_pep_num_mpep,
-    const uint32_t  *d_pep_ma_num_comb,
     const uint32_t  *d_pep_ma_num_comb_scan,
 
-    const uint8_t   *d_mod_ma_count,             
-
-    const uint32_t  nPep,
-    const uint32_t  num_ma,
-    const uint32_t  ma_count_sum_total
+    const uint32_t  total,
+    const uint32_t  mod_num_ma
 );
 
 void addModIons
