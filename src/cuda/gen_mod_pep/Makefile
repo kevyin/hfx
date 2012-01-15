@@ -7,7 +7,9 @@
 # ------------------------------------------------------------------------------
 STATIC_LIB      := libgen_mod_pep.a
 
-CUFILES         := gen_mod_pep.cu 
+CUFILES         := gen_mod_pep.cu \
+					prepare_gen_mod.cu \
+					calc_mod_cands.cu \
 
 EXTRALIBS       := stdc++
 

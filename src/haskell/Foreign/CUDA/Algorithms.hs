@@ -13,7 +13,7 @@
 module Foreign.CUDA.Algorithms
   (
     findIndicesInRange, findModablePeptides, findBeginEnd,
-    calcTotalModCands, genModCands,
+    calcTotalModCands, prepareGenMod, genModCands,
     addIons, addModIons, 
     rsort,
     mvm
@@ -119,6 +119,36 @@ calcTotalModCands a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 =
 foreign import ccall unsafe "algorithms.h calcTotalModCands"
   calcTotalModCands'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Word32 -> Word32 -> IO Word32
 
+prepareGenMod :: DevicePtr Word32
+              -> DevicePtr Word32
+              -> DevicePtr Word32
+              -> DevicePtr Word32
+              -> DevicePtr Word32
+              -> DevicePtr Word32
+              -> DevicePtr Word32
+              -> DevicePtr Word32
+              -> DevicePtr Word32
+              -> DevicePtr Word32
+              -> Int
+              -> Int
+              -> IO Int
+prepareGenMod a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 =
+  withDevicePtr a1 $ \a1' ->
+  withDevicePtr a2 $ \a2' ->
+  withDevicePtr a3 $ \a3' ->
+  withDevicePtr a4 $ \a4' ->
+  withDevicePtr a5 $ \a5' ->
+  withDevicePtr a6 $ \a6' ->
+  withDevicePtr a7 $ \a7' ->
+  withDevicePtr a8 $ \a8' ->
+  withDevicePtr a9 $ \a9' ->
+  withDevicePtr a10 $ \a10' ->
+  cIntConv `fmap` prepareGenMod'_ a1' a2' a3' a4' a5' a6' a7' a8' a9' a10' (cIntConv a11) (cIntConv a12)
+
+foreign import ccall unsafe "algorithms.h prepareGenMod"
+
+  prepareGenMod'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Word32 -> IO Word32
+
 genModCands :: DevicePtr Word32
             -> DevicePtr Word32
             -> DevicePtr Word32
@@ -127,12 +157,15 @@ genModCands :: DevicePtr Word32
             -> DevicePtr Word32
             -> DevicePtr Word32
             -> DevicePtr Word32
-            -> Int
             -> DevicePtr Word32
-            -> DevicePtr Word8
+            -> DevicePtr Word32
+            -> DevicePtr Word32
+            -> DevicePtr Word32
+            -> Int
+            -> Int
             -> Int
             -> IO ()
-genModCands a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 =
+genModCands a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 =
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
   withDevicePtr a3 $ \a3' ->
@@ -141,14 +174,17 @@ genModCands a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 =
   withDevicePtr a6 $ \a6' ->
   withDevicePtr a7 $ \a7' ->
   withDevicePtr a8 $ \a8' ->
-  --withDevicePtr a9 $ \a9' ->
+  withDevicePtr a9 $ \a9' ->
   withDevicePtr a10 $ \a10' ->
   withDevicePtr a11 $ \a11' ->
-  --withDevicePtr a12 $ \a12' ->
-  genModCands'_ a1' a2' a3' (cIntConv a4) a5' a6' a7' a8' (cIntConv a9) a10' a11' (cIntConv a12)
+  withDevicePtr a12 $ \a12' ->
+  --withDevicePtr a13 $ \a13' ->
+  --withDevicePtr a14 $ \a14' ->
+  --withDevicePtr a15 $ \a15' ->
+  genModCands'_ a1' a2' a3' (cIntConv a4) a5' a6' a7' a8' a9' a10' a11' a12' (cIntConv a13) (cIntConv a14) (cIntConv a15)
 
 foreign import ccall unsafe "algorithms.h genModCands"
-  genModCands'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word8 -> Word32 -> IO ()
+  genModCands'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Word32 -> Word32 -> IO ()
 
 addModIons :: DevicePtr Word32 -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> DevicePtr Word32 -> Int -> DevicePtr Word8 -> DevicePtr Word8 -> DevicePtr Float -> Int -> Int -> Int -> IO ()
 addModIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 a11 a12 a13 a14 a15 =
@@ -234,4 +270,12 @@ mvm a1 a2 a3 a4 a5 =
 foreign import ccall unsafe "algorithms.h mvm_if"
   mvm'_ :: Ptr Float -> Ptr Word32 -> Ptr Float -> Word32 -> Word32 -> IO ()
 
+--sum_Word32 :: DevicePtr Word32 -> Int -> IO Int
+--sum_Word32 a1 a2 =
+  --withDevicePtr a1 $ \a1' ->
+  ----withDevicePtr a2 $ \a2' ->
+  --cIntConv `fmap` sum_Word32'_ a1' (cIntConv a2)
+
+--foreign import ccall unsafe "algorithms.h sum_Word32"
+  --sum_Word32'_ :: Ptr Word32 -> Word32 -> IO Int
 

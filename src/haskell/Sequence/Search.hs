@@ -237,26 +237,33 @@ genModCandidates :: ConfigParams
                  -> CandidatesModable
                  -> (ModCandidates -> IO b)
                  -> IO b
-genModCandidates cp ddb dmi (nPep, d_pep_valid_idx, d_pep_idx, d_pep_mod_idx, d_pep_ma_count) action =
+genModCandidates cp ddb dmi (num_pep, d_pep_valid_idx, d_pep_idx, d_pep_mod_idx, d_pep_ma_count) action =
   let (num_ma, d_ma, _) = devModAcids dmi 
       (num_mod, d_mod_ma_count, d_mod_ma_count_sum, _) = devModCombs dmi 
   in
 
   -- calc number of modified peps generated from each pep
   --
-  CUDA.allocaArray nPep $ \d_pep_num_mpep -> 
-  CUDA.allocaArray (nPep*num_ma) $ \d_pep_ma_num_comb -> 
-  CUDA.allocaArray (nPep*num_ma) $ \d_pep_ma_num_comb_scan -> 
-  CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan d_mod_ma_count d_pep_idx d_pep_mod_idx d_pep_ma_count d_pep_valid_idx nPep num_mod num_ma >>= \total -> 
+  CUDA.allocaArray num_pep $ \d_pep_num_mpep -> 
+  CUDA.allocaArray (num_pep*num_ma) $ \d_pep_ma_num_comb -> 
+  CUDA.allocaArray (num_pep*num_ma) $ \d_pep_ma_num_comb_scan -> 
+  CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan d_mod_ma_count d_pep_idx d_pep_mod_idx d_pep_ma_count d_pep_valid_idx num_pep num_mod num_ma >>= \total -> 
 
-      action (total, d_pep_idx, d_pep_ma_num_comb_scan)
+  --CUDA.sum_Word32 d_mod_ma_count_sum num_mod >>= \ma_count_sum_total ->
+  --CUDA.scan d_mod_ma_count_sum_scan d_mod_ma_count_sum num_mod >>= \ma_count_sum_total ->
   ----action total
   ----
-  --CUDA.allocaArray total                $ \d_mpep_rank -> 
-  --CUDA.allocaArray (total*sum_ma_count) $ \d_mpep_unrank -> 
-  --CUDA.allocaArray total                $ \d_mpep_idx -> do
-      --CUDA.genModCands d_mpep_idx d_mpep_rank d_mpep_unrank total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma
-      --(t,_) <- bracketTime $ CUDA.genModCands d_mpep_idx d_mpep_rank d_mpep_unrank total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan nPep d_pep_ma_count d_mod_ma_count mod_num_ma
+  CUDA.allocaArray total $ \d_mpep_pep_idx -> 
+  CUDA.allocaArray total $ \d_mpep_rank -> 
+  CUDA.allocaArray total $ \d_mpep_ith_valid-> 
+  CUDA.allocaArray total $ \d_mpep_mod_ma_count_sum -> 
+  CUDA.allocaArray total $ \d_mpep_mod_ma_count_sum_scan -> 
+  CUDA.prepareGenMod d_mpep_pep_idx d_mpep_rank d_mpep_ith_valid d_mpep_mod_ma_count_sum d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_valid_idx d_pep_num_mpep num_pep total >>= \ ma_count_sum_total ->
+
+  CUDA.allocaArray (total*ma_count_sum_total) $ \d_mpep_unrank -> do
+    CUDA.genModCands d_mpep_unrank d_mpep_pep_idx d_mpep_rank total d_pep_idx d_pep_mod_idx d_pep_ma_count  d_pep_valid_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan d_mod_ma_count d_mod_ma_count_sum_scan num_pep num_ma ma_count_sum_total
+    action (total, d_pep_idx, d_pep_ma_num_comb_scan)
+      --(t,_) <- bracketTime $ CUDA.genModCands d_mpep_idx d_mpep_rank d_mpep_unrank total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan num_pep d_pep_ma_count d_mod_ma_count mod_num_ma
       --when (verbose cp) $ hPutStrLn stderr ("genModCands Elapsed time: " ++ showTime t)
       --action (total, d_mpep_idx, d_mpep_unrank)
 
