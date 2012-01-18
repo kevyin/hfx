@@ -120,45 +120,46 @@ searchWithMods cp sdb ddb dmi ms2 =
   --               pep_idx
   --               pep_mod_idx
   --          filter pep_cand_idx
-  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->
+  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands -> 
   -- generate modified candidates
   --          calc num_mpep for filtered cands
   --          calc ma_ncomb
   --          calc na_ncomb_scan
   --          calc mpep_unrank
-  mkModSpecXCorr ddb d_mods modifiedCands (ms2charge ms2) (G.length spec)  $ \mspecThry   -> return [] -- do
+  mkModSpecXCorr ddb dmi modifiedCands (ms2charge ms2) (G.length spec)  $ \mspecThry   -> return [] -- do
   --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
   --mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
-  
-{-    
-searchAModComb :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> ([Word8], [Word8], Float) -> IO MatchCollection
-searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) = 
-  --traceShow ("Searching comb: ", pmod) $
-
-  filterCandidateByMass cp ddb mod_mass                                     $ \candidatesByMass ->
-  CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->   -- modifable acid
-  CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
-  CUDA.withVector (U.fromList ma_mass)  $ \d_mod_ma_mass  ->   -- 
-  let d_mods = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, d_mod_ma_mass) in
-  filterCandidatesByModability cp ddb candidatesByMass d_mods                    $ \candidatesByMassAndMod ->
-  genModCandidates cp ddb candidatesByMassAndMod d_mods                         $ \modifiedCandidates ->
-  mkModSpecXCorr ddb d_mods modifiedCandidates (ms2charge ms2) (G.length spec)  $ \mspecThry   -> do
-  --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
-  mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
-  --(t,res) <- bracketTime $ mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
-  --when (verbose cp) $ hPutStrLn stderr ("sequestXCMod Elapsed time: " ++ showTime t)
-  --return res
   where
-    ma_mass         = getMA_Mass cp 
-    sum_ma_count    = fromIntegral $ sum ma_count
-    mod_num_ma      = length ma
     spec            = sequestXCorr cp ms2
     peaks           = extractPeaks spec
+  
+--searchAModComb :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> ([Word8], [Word8], Float) -> IO MatchCollection
+--searchAModComb cp sdb ddb ms2 (ma, ma_count, mod_mass) = 
+  ----traceShow ("Searching comb: ", pmod) $
 
-    finish (sx,i,u) = liftM (\f -> Match (modifyFragment pmod u f) sx (sp f) pmod u) (lookup sdb i)
-    sp              = matchIonSequence cp (ms2charge ms2) peaks
-    pmod            = zipWith3 (\a b c -> (w2c a, fromIntegral b, c)) ma ma_count ma_mass
--}
+  --filterCandidateByMass cp ddb mod_mass                                     $ \candidatesByMass ->
+  --CUDA.withVector (U.fromList ma)       $ \d_mod_ma       ->   -- modifable acid
+  --CUDA.withVector (U.fromList ma_count) $ \d_mod_ma_count ->   -- number of the acid to modify
+  --CUDA.withVector (U.fromList ma_mass)  $ \d_mod_ma_mass  ->   -- 
+  --let d_mods = (mod_num_ma, d_mod_ma, d_mod_ma_count, sum_ma_count, d_mod_ma_mass) in
+  --filterCandidatesByModability cp ddb candidatesByMass d_mods                    $ \candidatesByMassAndMod ->
+  --genModCandidates cp ddb candidatesByMassAndMod d_mods                         $ \modifiedCandidates ->
+  --mkModSpecXCorr ddb d_mods modifiedCandidates (ms2charge ms2) (G.length spec)  $ \mspecThry   -> do
+  ----mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
+  --mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
+  ----(t,res) <- bracketTime $ mapMaybe finish `fmap` sequestXCMod cp modifiedCandidates sum_ma_count spec mspecThry -- @TODO
+  ----when (verbose cp) $ hPutStrLn stderr ("sequestXCMod Elapsed time: " ++ showTime t)
+  ----return res
+  --where
+    --ma_mass         = getMA_Mass cp 
+    --sum_ma_count    = fromIntegral $ sum ma_count
+    --mod_num_ma      = length ma
+    --spec            = sequestXCorr cp ms2
+    --peaks           = extractPeaks spec
+
+    --finish (sx,i,u) = liftM (\f -> Match (modifyFragment pmod u f) sx (sp f) pmod u) (lookup sdb i)
+    --sp              = matchIonSequence cp (ms2charge ms2) peaks
+    --pmod            = zipWith3 (\a b c -> (w2c a, fromIntegral b, c)) ma ma_count ma_mass
     
 
 --
@@ -238,7 +239,7 @@ genModCandidates :: ConfigParams
                  -> (ModCandidates -> IO b)
                  -> IO b
 genModCandidates cp ddb dmi (num_pep, d_pep_valid_idx, d_pep_idx, d_pep_mod_idx, d_pep_ma_count) action =
-  let (num_ma, d_ma, _) = devModAcids dmi 
+  let (num_ma, _, _) = devModAcids dmi 
       (num_mod, d_mod_ma_count, d_mod_ma_count_sum, _) = devModCombs dmi 
   in
 
@@ -254,32 +255,37 @@ genModCandidates cp ddb dmi (num_pep, d_pep_valid_idx, d_pep_idx, d_pep_mod_idx,
   ----action total
   ----
   CUDA.allocaArray total $ \d_mpep_pep_idx -> 
+  CUDA.allocaArray total $ \d_mpep_pep_mod_idx -> 
   CUDA.allocaArray total $ \d_mpep_rank -> 
   CUDA.allocaArray total $ \d_mpep_ith_valid-> 
   CUDA.allocaArray total $ \d_mpep_mod_ma_count_sum -> 
   CUDA.allocaArray total $ \d_mpep_mod_ma_count_sum_scan -> 
-  CUDA.prepareGenMod d_mpep_pep_idx d_mpep_rank d_mpep_ith_valid d_mpep_mod_ma_count_sum d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_valid_idx d_pep_num_mpep num_pep total >>= \ ma_count_sum_total ->
 
-  CUDA.allocaArray (total*ma_count_sum_total) $ \d_mpep_unrank -> do
-    CUDA.genModCands d_mpep_unrank d_mpep_unrank d_mod_ma_count d_mpep_ith_valid d_mpep_rank d_mpep_mod_ma_count_sum_scan d_pep_mod_idx d_pep_ma_count d_pep_valid_idx d_pep_ma_num_comb_scan total num_ma 
+  CUDA.prepareGenMod d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_rank d_mpep_ith_valid d_mpep_mod_ma_count_sum d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_valid_idx d_pep_num_mpep num_pep total >>= \ mpep_mod_ma_count_sum_total ->
 
-    action (total, d_mpep_pep_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum, d_mpep_mod_ma_count_sum_scan)
+  CUDA.allocaArray (mpep_mod_ma_count_sum_total) $ \d_mpep_unrank -> do
+    CUDA.genModCands d_mpep_unrank d_mod_ma_count d_mpep_ith_valid d_mpep_rank d_mpep_mod_ma_count_sum_scan d_pep_mod_idx d_pep_ma_count d_pep_valid_idx d_pep_ma_num_comb_scan total num_ma 
+
+    action (total, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan)
       --(t,_) <- bracketTime $ CUDA.genModCands d_mpep_idx d_mpep_rank d_mpep_unrank total d_pep_idx d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan num_pep d_pep_ma_count d_mod_ma_count mod_num_ma
       --when (verbose cp) $ hPutStrLn stderr ("genModCands Elapsed time: " ++ showTime t)
       --action (total, d_mpep_idx, d_mpep_unrank)
 
 mkModSpecXCorr :: DeviceSeqDB
-               -> PepModDevice
+               -> DeviceModInfo
                -> ModCandidates
                -> Float
                -> Int
                -> (IonSeries -> IO b)
                -> IO b
-mkModSpecXCorr db (mod_num_ma, d_mod_ma, d_mod_ma_count,_ , d_mod_ma_mass) (total, d_mpep_pep_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum, d_mpep_mod_ma_count_sum_scan) chrg len action =
+mkModSpecXCorr db dmi (total, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan) chrg len action =
+  let (num_ma, d_ma, d_ma_mass) = devModAcids dmi 
+      (_, d_mod_ma_count, _, d_mod_delta) = devModCombs dmi 
+  in
   CUDA.allocaArray n $ \d_mspec -> do
     let bytes = fromIntegral $ n * CUDA.sizeOfPtr d_mspec
     CUDA.memset  d_mspec bytes 0
-    CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_pep_idx d_mpep_unrank total d_mod_ma d_mod_ma_count d_mod_ma_mass mod_num_ma ch len
+    CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_unrank d_mpep_mod_ma_count_sum_scan total d_mod_ma_count d_mod_delta d_ma d_ma_mass num_ma len ch
     --(t,_) <- bracketTime $ CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_idx d_mpep_unrank total d_mod_ma d_mod_ma_count d_mod_ma_mass mod_num_ma ch len
     --hPutStrLn stderr ("addModIons Elapsed time: " ++ showTime t)
 

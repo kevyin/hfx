@@ -132,6 +132,7 @@ uint32_t
 prepareGenMod
 (
     uint32_t          *d_out_mpep_pep_idx,
+    uint32_t          *d_out_mpep_pep_mod_idx,
     uint32_t          *d_out_mpep_rank,
     uint32_t          *d_out_mpep_ith_valid,
     uint32_t          *d_out_mpep_mod_ma_count_sum,
@@ -171,23 +172,29 @@ genModCands
 
 void addModIons
 (
-    uint32_t            *d_mspec,
-    const float         *d_residual,
-    const float         *d_mass,
-    const uint8_t       *d_ions,
-    const uint32_t      *d_tc,
-    const uint32_t      *d_tn,
-    const uint32_t      *d_mpep_idx,
-    const uint32_t      *d_mpep_unrank,
-    const uint32_t      num_mpep,
-    const uint8_t       *d_mod_ma,
-    const uint8_t       *d_mod_ma_count,
-    const float         *d_mod_ma_mass,
-    const uint32_t      num_ma,
-    const uint32_t      max_charge,
-    const uint32_t      len_spec
-);
+    uint32_t            *d_out_mspec,
+    const float         *d_residual,    // peptide residual mass
+    const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
+    const uint8_t       *d_ions,        // individual ion character codes (the database)
+    const uint32_t      *d_tc,          // c-terminal indices
+    const uint32_t      *d_tn,          // n-terminal indices
 
+    const uint32_t      *d_mpep_pep_idx,
+    const uint32_t      *d_mpep_pep_mod_idx,
+    const uint32_t      *d_mpep_unrank,
+    const uint32_t      *d_mpep_mod_ma_count_sum_scan,
+    const uint32_t      num_mpep,
+
+    const uint32_t      *_d_mod_ma_count,
+    const float         *_d_mod_delta,
+
+    const uint8_t       *d_ma,
+    const float         *d_ma_mass,
+    const uint32_t      num_ma,
+
+    const uint32_t      len_spec,
+    const uint32_t      max_charge
+);
 
 /*
  * Generate theoretical spectra
@@ -235,7 +242,6 @@ void mvm_if(float *d_y, const uint32_t *d_A, const float *d_x, const uint32_t m,
 uint32_t sum_Word32(const uint32_t *d_array, const uint32_t len);
 
 // Non Parallel
-
 void
 getSpecNonParallel(
     uint32_t            *d_out_check_spec, 
@@ -245,14 +251,16 @@ getSpecNonParallel(
     const uint8_t       *d_ions_raw, 
     const uint32_t      *d_tc_raw,
     const uint32_t      *d_tn_raw,
-    const uint32_t      *d_mpep_idx_raw,
+    const uint32_t      *d_mpep_pep_idx,
+    const uint32_t      *d_mpep_pep_mod_idx,
     const uint32_t      *d_mpep_unrank_raw,
+    const uint32_t      *d_mpep_mod_ma_count_sum_scan,
     const uint32_t      num_mpep,
-    const uint8_t       *d_mod_ma_raw,
-    const uint8_t       *d_mod_ma_count_raw,
-    const float         *d_mod_ma_mass_raw,
-    const uint32_t      mod_num_ma,
-    const float         res_delta,
+    const uint32_t      *d_mod_ma_count_raw,
+    const float         *d_mod_delta_raw,
+    const uint8_t       *d_ma_raw,
+    const float         *d_ma_mass_raw,
+    const uint32_t      num_ma,
 
     const uint32_t      max_charge,
     const uint32_t      len_spec

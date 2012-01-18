@@ -17,7 +17,7 @@
 
 #include <stdint.h>
 
-//#define DEBUG
+#define DEBUG
 
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
@@ -138,26 +138,8 @@ getAAMass(const float *d_mass, const char aa)
     return fetch_x<UseCache>(aa - 'A', d_mass);
 }
 
-/*
- * Determine how much the modification shift the residual mass by
- */
-float
-getModResDelta(const float *d_mod_ma_mass, const uint8_t *d_mod_ma_count, const uint32_t mod_num_ma) 
-{
-    thrust::device_ptr<const float>   d_mod_ma_mass_th(d_mod_ma_mass);
-    thrust::device_ptr<const uint8_t> d_mod_ma_count_th(d_mod_ma_count);
-    //float delta = 0;
-    //for (uint32_t i = 0; i < mod_num_ma; ++i)
-    //{
-        //delta += d_mod_ma_mass_th[i]*d_mod_ma_count_th[i];
-    //}
-    //return delta;
-    
-    return thrust::inner_product(d_mod_ma_mass_th, d_mod_ma_mass_th + mod_num_ma, d_mod_ma_count_th, (float)0);
-}
-
-__device__ bool
-isToBeModded(const uint32_t *d_mpep_unrank, const uint8_t *d_mod_ma_count, uint32_t ma_idx, uint32_t ith_ma)
+__device__ __inline__ bool
+isToBeModded(const uint32_t *d_mpep_unrank, const uint32_t *d_mod_ma_count, uint32_t ma_idx, uint32_t ith_ma)
 {
     bool res = false;
     uint32_t unrank_idx = 0;
@@ -187,7 +169,7 @@ isToBeModded(const uint32_t *d_mpep_unrank, const uint8_t *d_mod_ma_count, uint3
  * output will contain the theoretical spectra peaks in a dense (although
  * mostly zero) matrix.
  */
-template <uint32_t BlockSize, uint32_t MaxCharge, bool UseCache, uint32_t MaxMA>
+template <uint32_t BlockSize, uint32_t MaxCharge, bool UseCache, uint32_t NumMA>
 __global__ static void
 addModIons_core
 (
@@ -198,16 +180,20 @@ addModIons_core
     const uint8_t       *d_ions,        // individual ion character codes (the database)
     const uint32_t      *d_tc,          // c-terminal indices
     const uint32_t      *d_tn,          // n-terminal indices
-    const uint32_t      *d_mpep_idx,
+
+    const uint32_t      *d_mpep_pep_idx,
+    const uint32_t      *d_mpep_pep_mod_idx,
     const uint32_t      *d_mpep_unrank,
+    const uint32_t      *d_mpep_mod_ma_count_sum_scan,
     const uint32_t      num_mpep,
-    const uint8_t       *d_mod_ma,
-    const uint8_t       *d_mod_ma_count,
-    const float         *d_mod_ma_mass,
-    const uint32_t      mod_num_ma,
-    const uint32_t      len_spec,
-    const float         mass_delta,
-    const uint32_t      total_ma_count
+
+    const uint32_t      *_d_mod_ma_count,
+    const float         *d_mod_delta,
+
+    const uint8_t       *d_ma,
+    const float         *d_ma_mass,
+
+    const uint32_t      len_spec
 )
 {
     assert(BlockSize % WARP_SIZE == 0);
@@ -218,19 +204,23 @@ addModIons_core
     const uint32_t vector_id       = thread_id / WARP_SIZE;
     const uint32_t thread_lane     = threadIdx.x & (WARP_SIZE-1);
 
-    assert(MaxMA >= mod_num_ma);
-
     __shared__ volatile float s_data[BlockSize];
     // Keep a record of ith moddable acid as the pep is traversed
-    __shared__ volatile uint32_t s_pep_ith_ma[MaxMA][BlockSize];
+    __shared__ volatile uint32_t s_pep_ith_ma[NumMA][BlockSize];
 
 
     for (uint32_t row = vector_id; row < num_mpep; row += numVectors)
     {
-        const uint32_t mpep_idx  = d_mpep_idx[row];
-        const uint32_t row_start = d_tc[mpep_idx];
-        const uint32_t row_end   = d_tn[mpep_idx];
-        const float    residual  = d_residual[mpep_idx] + mass_delta;
+        const uint32_t pep_idx  = d_mpep_pep_idx[row];
+        const uint32_t mod_idx  = d_mpep_pep_mod_idx[row];
+
+        const uint32_t unrank_pos = d_mpep_mod_ma_count_sum_scan[row];
+
+        const uint32_t *d_mod_ma_count = _d_mod_ma_count + mod_idx*NumMA;
+
+        const uint32_t row_start = d_tc[pep_idx];
+        const uint32_t row_end   = d_tn[pep_idx];
+        const float    residual  = d_residual[pep_idx] + d_mod_delta[mod_idx];
 
         uint32_t       *spec     = &d_mspec[row * len_spec];
         float          b_mass;
@@ -239,7 +229,7 @@ addModIons_core
 
         s_data[threadIdx.x]      = 0;
         //s_test[threadIdx.x]      = 0;
-        for (int mod = 0; mod < mod_num_ma; mod++)
+        for (int mod = 0; mod < NumMA; mod++)
         {
             s_pep_ith_ma[mod][threadIdx.x] = 0;
         }
@@ -256,10 +246,10 @@ addModIons_core
              * Load the ion mass, and propagate the partial scan results
              */
             // is this a modable acid
-            for (int m = 0; m < mod_num_ma; m++) 
+            for (int m = 0; m < NumMA; m++) 
             {
                 uint32_t count = 0;
-                if (d_mod_ma[m] == d_ions[j]) 
+                if (d_ma[m] == d_ions[j]) 
                 {
                     is_ma = true;
                     count = 1;
@@ -276,11 +266,12 @@ addModIons_core
             uint32_t ith_ma = s_pep_ith_ma[ma_idx][threadIdx.x] - 1;
 
             //if (is_ma)
-            bool modded = isToBeModded(d_mpep_unrank + row*total_ma_count, d_mod_ma_count, ma_idx, ith_ma);
+            bool modded = isToBeModded(d_mpep_unrank + unrank_pos, d_mod_ma_count, ma_idx, ith_ma);
+            //bool modded = isToBeModded(d_mpep_unrank, d_mod_ma_count, ma_idx, ith_ma);
 
             if (is_ma && modded)
             {
-                b_mass = getAAMass<UseCache>(d_mass, d_ions[j]) + d_mod_ma_mass[ma_idx];
+                b_mass = getAAMass<UseCache>(d_mass, d_ions[j]) + d_ma_mass[ma_idx];
 #ifdef DEBUG
                 d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j] + 32;
 #endif
@@ -327,27 +318,31 @@ addModIons_control(uint32_t N, uint32_t &blocks, uint32_t &threads)
     blocks  = min(blocks, MAX_BLOCKS);
 }
 
-template <uint32_t MaxCharge, bool UseCache, uint32_t MaxMA>
+template <uint32_t MaxCharge, bool UseCache, uint32_t NumMA>
 static void
 addModIons_dispatch
 (
     uint32_t            *d_mspec,
-    uint8_t             *d_mions,
-    const float         *d_residual,
-    const float         *d_mass,
-    const uint8_t       *d_ions,
-    const uint32_t      *d_tc,
-    const uint32_t      *d_tn,
-    const uint32_t      *d_mpep_idx,
+    uint8_t             *d_mions,       // For debugging, records ions in char form
+    const float         *d_residual,    // peptide residual mass
+    const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
+    const uint8_t       *d_ions,        // individual ion character codes (the database)
+    const uint32_t      *d_tc,          // c-terminal indices
+    const uint32_t      *d_tn,          // n-terminal indices
+
+    const uint32_t      *d_mpep_pep_idx,
+    const uint32_t      *d_mpep_pep_mod_idx,
     const uint32_t      *d_mpep_unrank,
+    const uint32_t      *d_mpep_mod_ma_count_sum_scan,
     const uint32_t      num_mpep,
-    const uint8_t       *d_mod_ma,
-    const uint8_t       *d_mod_ma_count,
-    const float         *d_mod_ma_mass,
-    const uint32_t      mod_num_ma,
-    const uint32_t      len_spec,
-    const float         mass_delta,
-    const uint32_t      total_ma_count
+
+    const uint32_t      *_d_mod_ma_count,
+    const float         *_d_mod_delta,
+
+    const uint8_t       *d_ma,
+    const float         *d_ma_mass,
+
+    const uint32_t      len_spec
 )
 {
     uint32_t blocks;
@@ -359,11 +354,11 @@ addModIons_dispatch
     addModIons_control(num_mpep, blocks, threads);
     switch (threads)
     {
-    //case 512: addModIons_core<512,MaxCharge,UseCache,MaxMA><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx,, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, len_spec, mass_delta, total_ma_count); break;
-    //case 256: addModIons_core<256,MaxCharge,UseCache,MaxMA><<<blocks,threads>>>(d_mspec, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx,, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, len_spec, mass_delta, total_ma_count); break;
-    case 128: addModIons_core<128,MaxCharge,UseCache,MaxMA><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
-    case  64: addModIons_core< 64,MaxCharge,UseCache,MaxMA><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
-    case  32: addModIons_core< 32,MaxCharge,UseCache,MaxMA><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_ma_count); break;
+    //case 512: 
+    //case 256: 
+    case 128: addModIons_core<128,MaxCharge,UseCache,NumMA><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case  64: addModIons_core< 64,MaxCharge,UseCache,NumMA><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case  32: addModIons_core< 32,MaxCharge,UseCache,NumMA><<<blocks,threads>>>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
     default:
         assert(!"Non-exhaustive patterns in match");
     }
@@ -372,36 +367,47 @@ addModIons_dispatch
       unbind_x(d_mass);
 }
 
-template <uint32_t MaxMA>
+template <uint32_t NumMA>
 static void
 addModIons_dispatch_max_charge
 (
     uint32_t            *d_mspec,
-    uint8_t             *d_mions,
-    const float         *d_residual,
-    const float         *d_mass,
-    const uint8_t       *d_ions,
-    const uint32_t      *d_tc,
-    const uint32_t      *d_tn,
-    const uint32_t      *d_mpep_idx,
+    uint8_t             *d_mions,       // For debugging, records ions in char form
+    const float         *d_residual,    // peptide residual mass
+    const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
+    const uint8_t       *d_ions,        // individual ion character codes (the database)
+    const uint32_t      *d_tc,          // c-terminal indices
+    const uint32_t      *d_tn,          // n-terminal indices
+
+    const uint32_t      *d_mpep_pep_idx,
+    const uint32_t      *d_mpep_pep_mod_idx,
     const uint32_t      *d_mpep_unrank,
+    const uint32_t      *d_mpep_mod_ma_count_sum_scan,
     const uint32_t      num_mpep,
-    const uint8_t       *d_mod_ma,
-    const uint8_t       *d_mod_ma_count,
-    const float         *d_mod_ma_mass,
-    const uint32_t      mod_num_ma,
+
+    const uint32_t      *_d_mod_ma_count,
+    const float         *_d_mod_delta,
+
+    const uint8_t       *d_ma,
+    const float         *d_ma_mass,
+
     const uint32_t      len_spec,
-    const float         mass_delta,
-    const uint32_t      total_m,
+
     const uint32_t      max_charge
 )
 {
     switch (max_charge)
     {
-    case 1: addModIons_dispatch<1,true,MaxMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_m); break;
-    case 2: addModIons_dispatch<2,true,MaxMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_m); break;
-    case 3: addModIons_dispatch<3,true,MaxMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_m); break;
-    case 4: addModIons_dispatch<4,true,MaxMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, mass_delta, total_m); break;
+    case 1: addModIons_dispatch<1,true,NumMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case 2: addModIons_dispatch<2,true,NumMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case 3: addModIons_dispatch<3,true,NumMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case 4: addModIons_dispatch<4,true,NumMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case 5: addModIons_dispatch<5,true,NumMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case 6: addModIons_dispatch<6,true,NumMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case 7: addModIons_dispatch<7,true,NumMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case 8: addModIons_dispatch<8,true,NumMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case 9: addModIons_dispatch<9,true,NumMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
+    case 10: addModIons_dispatch<10,true,NumMA>(d_mspec, d_mions, d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, _d_mod_ma_count, _d_mod_delta, d_ma, d_ma_mass, len_spec); break;
     default:
         assert(!"Non-exhaustive patterns in match");
     }
@@ -413,22 +419,32 @@ addModIons_dispatch_max_charge
 void addModIons
 (
     uint32_t            *d_out_mspec,
-    const float         *d_residual,
-    const float         *d_mass,
-    const uint8_t       *d_ions,
-    const uint32_t      *d_tc,
-    const uint32_t      *d_tn,
-    const uint32_t      *d_mpep_idx,
+    const float         *d_residual,    // peptide residual mass
+    const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
+    const uint8_t       *d_ions,        // individual ion character codes (the database)
+    const uint32_t      *d_tc,          // c-terminal indices
+    const uint32_t      *d_tn,          // n-terminal indices
+
+    const uint32_t      *d_mpep_pep_idx,
+    const uint32_t      *d_mpep_pep_mod_idx,
     const uint32_t      *d_mpep_unrank,
+    const uint32_t      *d_mpep_mod_ma_count_sum_scan,
     const uint32_t      num_mpep,
-    const uint8_t       *d_mod_ma,
-    const uint8_t       *d_mod_ma_count,
-    const float         *d_mod_ma_mass,
-    const uint32_t      mod_num_ma,
-    const uint32_t      max_charge,
-    const uint32_t      len_spec
+
+    const uint32_t      *d_mod_ma_count,
+    const float         *d_mod_delta,
+
+    const uint8_t       *d_ma,
+    const float         *d_ma_mass,
+    const uint32_t      num_ma,
+
+    const uint32_t      len_spec,
+    const uint32_t      max_charge
 )
 {
+    std::cout << "aaddmodions d_ma ";
+    thrust::device_ptr< const uint8_t> d_ma_th(d_ma);
+    std::cout << d_ma_th[0] << std::endl;
 
 #ifdef DEBUG
     thrust::device_vector<uint8_t> d_mions_v(MAX_PEP_LEN*num_mpep);
@@ -437,38 +453,35 @@ void addModIons
     thrust::device_ptr<uint8_t> d_mions;
 #endif
 
-    float delta = getModResDelta(d_mod_ma_mass, d_mod_ma_count, mod_num_ma);
-
-    thrust::device_ptr<const uint8_t> d_mod_ma_count_th(d_mod_ma_count);
-    const uint32_t total_ma_count = thrust::reduce(d_mod_ma_count_th, d_mod_ma_count_th + mod_num_ma);
-
-    switch (mod_num_ma)
+    switch (num_ma)
     {
-    case 1: addModIons_dispatch_max_charge<1>(d_out_mspec,  d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
-    case 2: addModIons_dispatch_max_charge<2>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
-    case 3: addModIons_dispatch_max_charge<3>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
-    case 4: addModIons_dispatch_max_charge<4>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
-    case 5: addModIons_dispatch_max_charge<5>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
-    case 6: addModIons_dispatch_max_charge<6>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
-    case 7: addModIons_dispatch_max_charge<7>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
-    case 8: addModIons_dispatch_max_charge<8>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
-    case 9: addModIons_dispatch_max_charge<9>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
-    case 10: addModIons_dispatch_max_charge<10>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_idx, d_mpep_unrank, num_mpep, d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, len_spec, delta, total_ma_count, max_charge); break;
+    case 1: addModIons_dispatch_max_charge<1>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, d_mod_ma_count, d_mod_delta, d_ma, d_ma_mass, len_spec, max_charge); break;
+    case 2: addModIons_dispatch_max_charge<2>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, d_mod_ma_count, d_mod_delta, d_ma, d_ma_mass, len_spec, max_charge); break;
+    case 3: addModIons_dispatch_max_charge<3>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, d_mod_ma_count, d_mod_delta, d_ma, d_ma_mass, len_spec, max_charge); break;
+    case 4: addModIons_dispatch_max_charge<4>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, d_mod_ma_count, d_mod_delta, d_ma, d_ma_mass, len_spec, max_charge); break;
+    case 5: addModIons_dispatch_max_charge<5>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, d_mod_ma_count, d_mod_delta, d_ma, d_ma_mass, len_spec, max_charge); break;
+    case 6: addModIons_dispatch_max_charge<6>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, d_mod_ma_count, d_mod_delta, d_ma, d_ma_mass, len_spec, max_charge); break;
+    case 7: addModIons_dispatch_max_charge<7>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, d_mod_ma_count, d_mod_delta, d_ma, d_ma_mass, len_spec, max_charge); break;
+    case 8: addModIons_dispatch_max_charge<8>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, d_mod_ma_count, d_mod_delta, d_ma, d_ma_mass, len_spec, max_charge); break;
+    case 9: addModIons_dispatch_max_charge<9>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, d_mod_ma_count, d_mod_delta, d_ma, d_ma_mass, len_spec, max_charge); break;
+    case 10: addModIons_dispatch_max_charge<10>(d_out_mspec, d_mions.get(), d_residual, d_mass, d_ions, d_tc, d_tn, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep, d_mod_ma_count, d_mod_delta, d_ma, d_ma_mass, len_spec, max_charge); break;
     default:
         assert(!"Non-exhaustive patterns in match");
     }
 
-#ifdef DEBUG
+#ifdef DEBUG                             
     std::cout << "Checking generated spectrums" << std::endl;
-    std::cout << "delta was: " << delta << std::endl;
     // To check the spectrums above, create these modified peptides serially and call addIons to create spectrums. Then compare the two spectrums
     // NB currently only allows 1 alternative mass for an acid. lowercase is used for the modified mass
+    
     thrust::device_vector<uint32_t> d_out_check_spec(len_spec*num_mpep);
     getSpecNonParallel(d_out_check_spec.data().get(),
                      d_mions.get(),
                      d_residual, d_mass, d_ions, d_tc, d_tn, 
-                     d_mpep_idx, d_mpep_unrank, num_mpep,
-                     d_mod_ma, d_mod_ma_count, d_mod_ma_mass, mod_num_ma, delta,
+                     d_mpep_pep_idx, d_mpep_pep_mod_idx, 
+                     d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep,
+                     d_mod_ma_count, d_mod_delta,
+                     d_ma, d_ma_mass, num_ma,
                      max_charge, len_spec);
 
     // compare

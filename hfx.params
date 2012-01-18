@@ -18,7 +18,7 @@ add_C                   = 57.0
 #
 # Variable amino acid modifications
 #
-max-modable-acids       = 64
+max-modable-acids       = 4
 #mod_C                   = 57.0
 #mod_Q                   = -17
 #mod_N                   = 29
