@@ -11,8 +11,8 @@
 
 module Sequence.Fragment
   (
-    SequenceDB(..), DeviceSeqDB(..), DeviceModInfo(..), Fragment(..),
-    makeSeqDB, withDeviceDB, makeDevModInfo, fraglabel, PepMod, modifyFragment
+    SequenceDB(..), DeviceSeqDB(..), HostModInfo(..), DeviceModInfo(..), Fragment(..),
+    makeSeqDB, withDeviceDB, makeModInfo, withDevModInfo, fraglabel, PepMod, modifyFragment
   )
   where
 
@@ -132,6 +132,16 @@ instance Binary SequenceDB where
   {-# INLINE get #-}
   get = liftM5 SeqDB get get get (liftM3 G.zip3 get get get) get
 
+data HostModInfo = HostModInfo
+  {
+    -- num_ma, ma, ma_mass (mass change)
+    modAcids         :: (Int, U.Vector Char, U.Vector Float), 
+    -- num_mod, mod_ma_count (size: num_ma X num_mod), mod_ma_count_sum, mod_delta)
+    modCombs         :: (Int, U.Vector Int, U.Vector Int, U.Vector Float), 
+    resIdxSort       :: U.Vector Int
+  }
+  deriving Show
+
 data DeviceModInfo = DevModInfo
   {
     -- num_ma, d_ma, d_ma_mass (mass change)
@@ -221,31 +231,22 @@ withDeviceDB cp sdb action =
     CUDA.withVector ions $ \d_ions ->
       action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n))
 
-makeDevModInfo :: ConfigParams -> SequenceDB -> (DeviceModInfo -> IO a) -> IO a
-makeDevModInfo cp sdb action = 
-    CUDA.withVector ma               $ \d_ma        ->
-    CUDA.withVector ma_mass          $ \d_ma_mass   ->
-    CUDA.withVector mod_delta        $ \d_mod_delta ->
-    CUDA.withVector mod_ma_count     $ \d_mod_ma_count ->
-    CUDA.withVector mod_ma_count_sum $ \d_mod_ma_count_sum -> do
-
+makeModInfo :: ConfigParams -> SequenceDB -> IO HostModInfo
+makeModInfo cp sdb = do
     let (r,_,_) = G.unzip3 (dbFrag sdb)
     pep_idx <- U.unsafeThaw $ U.enumFromN 0 (G.length r) 
     VA.sortBy (\i j -> compare (r G.! i) (r G.! j)) pep_idx
-    pep_idx' <- U.unsafeFreeze pep_idx
-    let pep_idx_r_sorted = U.map fromIntegral pep_idx'
+    pep_idx_r_sorted <- U.unsafeFreeze pep_idx
 
-    CUDA.withVector pep_idx_r_sorted         $ \d_r_sorted -> 
-
-      action (DevModInfo (num_ma, d_ma, d_ma_mass) (num_mod, d_mod_ma_count, d_mod_ma_count_sum, d_mod_delta) d_r_sorted)
+    return $ HostModInfo (num_ma, ma, ma_mass) (num_mod, mod_ma_count, mod_ma_count_sum, mod_delta) pep_idx_r_sorted
       where
         max_ma  = maxModableAcids cp
-        ma      = U.map c2w $ U.fromList $ getMA cp
+        ma      = U.fromList $ getMA cp
         ma_mass = U.fromList $ getMA_Mass cp
         num_ma  = U.length ma
         num_mod          = length ma_count
-        mod_ma_count     = U.map fromIntegral $ U.concat ma_count
-        mod_ma_count_sum = U.map fromIntegral $ U.fromList $ map U.sum ma_count
+        mod_ma_count     = U.concat ma_count
+        mod_ma_count_sum = U.fromList $ map U.sum ma_count
         mod_delta        = U.fromList $ map calcDelta ma_count
 
         calcDelta ma_cnt = U.sum (U.zipWith (\c m -> m * fromIntegral c) ma_cnt ma_mass)
@@ -266,6 +267,20 @@ makeDevModInfo cp sdb action =
             where
             (x,_:ys) = splitAt idx list
 
+withDevModInfo :: HostModInfo -> (DeviceModInfo -> IO a) -> IO a
+withDevModInfo hmi action = 
+    let (num_ma, ma, ma_mass) = modAcids hmi
+        (num_mod, mod_ma_count, mod_ma_count_sum, mod_delta) = modCombs hmi
+        pep_idx_r_sorted = resIdxSort hmi
+    in
+    CUDA.withVector (U.map c2w ma)   $ \d_ma        ->
+    CUDA.withVector ma_mass          $ \d_ma_mass   ->
+    CUDA.withVector mod_delta        $ \d_mod_delta ->
+    CUDA.withVector (U.map fromIntegral mod_ma_count)     $ \d_mod_ma_count ->
+    CUDA.withVector (U.map fromIntegral mod_ma_count_sum) $ \d_mod_ma_count_sum -> 
+    CUDA.withVector (U.map fromIntegral pep_idx_r_sorted) $ \d_r_sorted -> 
+
+      action (DevModInfo (num_ma, d_ma, d_ma_mass) (num_mod, d_mod_ma_count, d_mod_ma_count_sum, d_mod_delta) d_r_sorted)
     
 --------------------------------------------------------------------------------
 -- Digestion

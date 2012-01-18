@@ -203,8 +203,8 @@ calcTotalModCands
     //thrust::device_free(d_tmp);
 //#endif
 
-    uint32_t total = thrust::reduce(d_out_pep_num_mpep, d_out_pep_num_mpep + nPep);
+    uint32_t num_mpep = thrust::reduce(d_out_pep_num_mpep, d_out_pep_num_mpep + nPep);
 
-    return total;
+    return num_mpep;
 }
 
