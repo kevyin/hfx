@@ -98,6 +98,9 @@ prepareGenMod
     const uint32_t    num_mpep
 )
 {
+    //std::cout << "prepareGenMod" << std::endl;
+    //printGPUMemoryUsage();
+
     thrust::device_ptr<const uint32_t> d_pep_num_mpep_th(d_pep_num_mpep);
     thrust::device_ptr<const uint32_t> d_pep_valid_idx_th(d_pep_valid_idx);
 

@@ -183,6 +183,7 @@ void addModIons
     const uint32_t      *d_mpep_pep_mod_idx,
     const uint32_t      *d_mpep_unrank,
     const uint32_t      *d_mpep_mod_ma_count_sum_scan,
+    const uint32_t      len_rank,
     const uint32_t      num_mpep,
 
     const uint32_t      *_d_mod_ma_count,
@@ -255,6 +256,7 @@ getSpecNonParallel(
     const uint32_t      *d_mpep_pep_mod_idx,
     const uint32_t      *d_mpep_unrank_raw,
     const uint32_t      *d_mpep_mod_ma_count_sum_scan,
+    const uint32_t      len_urank,
     const uint32_t      num_mpep,
     const uint32_t      *d_mod_ma_count_raw,
     const float         *d_mod_delta_raw,

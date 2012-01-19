@@ -144,6 +144,8 @@ calcTotalModCands
     const uint32_t    num_ma
 ) 
 {
+    //std::cout << "calcTotalModCands" << std::endl;
+    //printGPUMemoryUsage();
     // initialise thrust ptrs
     thrust::device_ptr<uint32_t>        d_out_pep_num_mpep(d_out_pep_num_mpep_raw);
     thrust::device_ptr<uint32_t>        d_out_pep_ma_num_comb(d_out_pep_ma_num_comb_raw); 

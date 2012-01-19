@@ -190,12 +190,13 @@ addModIons :: DevicePtr Word32
            -> DevicePtr Word32 
            -> DevicePtr Word32 
            -> Int 
+           -> Int 
            -> DevicePtr Word32 
            -> DevicePtr Float 
            -> DevicePtr Word8
            -> DevicePtr Float
            -> Int -> Int -> Int -> IO ()
-addModIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 =
+addModIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19=
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
   withDevicePtr a3 $ \a3' ->
@@ -207,17 +208,18 @@ addModIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 =
   withDevicePtr a9 $ \a9' ->
   withDevicePtr a10 $ \a10' ->
   --withDevicePtr a11 $ \a11' ->
-  withDevicePtr a12 $ \a12' ->
+  --withDevicePtr a12 $ \a12' ->
   withDevicePtr a13 $ \a13' ->
   withDevicePtr a14 $ \a14' ->
   withDevicePtr a15 $ \a15' ->
-  --withDevicePtr a16 $ \a16' ->
+  withDevicePtr a16 $ \a16' ->
   --withDevicePtr a17 $ \a17' ->
   --withDevicePtr a18 $ \a18' ->
-  addModIons'_ a1' a2' a3' a4' a5' a6' a7' a8' a9' a10' (cIntConv a11) a12' a13' a14' a15' (cIntConv a16) (cIntConv a17) (cIntConv a18)
+  --withDevicePtr a19 $ \a19' ->
+  addModIons'_ a1' a2' a3' a4' a5' a6' a7' a8' a9' a10' (cIntConv a11) (cIntConv a12) a13' a14' a15' a16' (cIntConv a17) (cIntConv a18) (cIntConv a19)
 
 foreign import ccall unsafe "algorithms.h addModIons"
-  addModIons'_ :: Ptr Word32 -> Ptr Float -> Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 ->  Word32 -> Ptr Word32 -> Ptr Float -> Ptr Word8 -> Ptr Float -> Word32 -> Word32 -> Word32 -> IO ()
+  addModIons'_ :: Ptr Word32 -> Ptr Float -> Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 ->  Word32 -> Ptr Word32 -> Ptr Float -> Ptr Word8 -> Ptr Float -> Word32 -> Word32 -> Word32 -> IO ()
 
 addIons :: DevicePtr Word32 -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> Int -> Int -> Int -> IO ()
 addIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 =

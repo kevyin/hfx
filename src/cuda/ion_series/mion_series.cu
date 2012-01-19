@@ -17,7 +17,7 @@
 
 #include <stdint.h>
 
-#define DEBUG
+//#define DEBUG
 
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
@@ -429,6 +429,7 @@ void addModIons
     const uint32_t      *d_mpep_pep_mod_idx,
     const uint32_t      *d_mpep_unrank,
     const uint32_t      *d_mpep_mod_ma_count_sum_scan,
+    const uint32_t      len_unrank,
     const uint32_t      num_mpep,
 
     const uint32_t      *d_mod_ma_count,
@@ -442,9 +443,8 @@ void addModIons
     const uint32_t      max_charge
 )
 {
-    std::cout << "aaddmodions d_ma ";
-    thrust::device_ptr< const uint8_t> d_ma_th(d_ma);
-    std::cout << d_ma_th[0] << std::endl;
+    //std::cout << "mion_series" << std::endl;
+    //printGPUMemoryUsage();
 
 #ifdef DEBUG
     thrust::device_vector<uint8_t> d_mions_v(MAX_PEP_LEN*num_mpep);
@@ -474,15 +474,21 @@ void addModIons
     // To check the spectrums above, create these modified peptides serially and call addIons to create spectrums. Then compare the two spectrums
     // NB currently only allows 1 alternative mass for an acid. lowercase is used for the modified mass
     
+    printGPUMemoryUsage();
+    std::cout << "to alloc " << len_spec*num_mpep*sizeof(uint32_t) << std::endl;
     thrust::device_vector<uint32_t> d_out_check_spec(len_spec*num_mpep);
+    std::cout << "475" << std::endl;
     getSpecNonParallel(d_out_check_spec.data().get(),
                      d_mions.get(),
                      d_residual, d_mass, d_ions, d_tc, d_tn, 
                      d_mpep_pep_idx, d_mpep_pep_mod_idx, 
-                     d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, num_mpep,
+                     d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank, num_mpep,
                      d_mod_ma_count, d_mod_delta,
                      d_ma, d_ma_mass, num_ma,
                      max_charge, len_spec);
+
+    
+    std::cout << "485" << std::endl;
 
     // compare
     thrust::device_ptr<uint32_t> d_out_mspec_th(d_out_mspec);
@@ -507,6 +513,7 @@ void addModIons
     } else {
         std::cout << "spectrum seems ok" << std:: endl;
     }
+    std::cout << "510" << std::endl;
 #endif
 
 }

@@ -118,6 +118,7 @@ getSpecNonParallel(
     const uint32_t      *d_mpep_pep_mod_idx_raw,
     const uint32_t      *d_mpep_unrank_raw,
     const uint32_t      *d_mpep_mod_ma_count_sum_scan_raw,
+    const uint32_t      len_unrank,
     const uint32_t      num_mpep,
     const uint32_t      *d_mod_ma_count_raw,
     const float         *d_mod_delta_raw,
@@ -131,6 +132,8 @@ getSpecNonParallel(
 )
 {
     std::cout << "generating spectrums. Non parallel" << std::endl;
+    //std::cout << "check_series" << std::endl;
+    //printGPUMemoryUsage();
     // create a custom set of arrays to call addIons with
     // 
     // d_check_residual  mpep residual mass
@@ -174,9 +177,9 @@ getSpecNonParallel(
         thrust::copy(d_ions + d_tc[idx], d_ions + d_tn[idx], ions.begin());
 
         // unrank
-        std::vector<uint32_t> unrank(30);
         uint32_t begin = d_mpep_mod_ma_count_sum_scan[i];
-        uint32_t end = (i < num_mpep-1) ? d_mpep_mod_ma_count_sum_scan[i+1] : begin + d_mpep_mod_ma_count_sum_scan[i] - d_mpep_mod_ma_count_sum_scan[i-1];
+        uint32_t end = (i < num_mpep - 1) ? d_mpep_mod_ma_count_sum_scan[i + 1] : len_unrank;
+        std::vector<uint32_t> unrank(end - begin);
         thrust::copy(d_mpep_unrank + begin, d_mpep_unrank + end, unrank.begin());
         // h_ma_count
         uint32_t mod_idx = d_mpep_pep_mod_idx[i];

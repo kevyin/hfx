@@ -403,7 +403,7 @@ struct findBegin : public thrust::unary_function<float,T>
 
     __host__ __device__ T operator() (float delta)
     {
-        const float target = mass + delta - eps;
+        const float target = mass - delta - eps;
         T min = 0;
         T max = num_pep - 1;
 
@@ -440,7 +440,7 @@ struct findEnd : public thrust::unary_function<float,T>
 
     __host__ __device__ T operator() (float delta)
     {
-        const float target = mass + delta + eps;
+        const float target = mass - delta + eps;
         T min = 0;
         T max = num_pep - 1;
 
@@ -503,8 +503,8 @@ findBeginEnd_f
 
 //#ifdef _DEBUG
     for (uint32_t i = 0; i < num_mod; ++i) {
-        const float target_l = mass + d_mod_delta[i] - eps;
-        const float target_u = mass + d_mod_delta[i] + eps;
+        const float target_l = mass - d_mod_delta[i] - eps;
+        const float target_u = mass - d_mod_delta[i] + eps;
 
         //std::cerr << "num_pep " << d_num_pep[i] << " scan " << d_num_pep_scan[i] << " beg " << d_begin[i] << " end " << d_end[i] << std::endl;
         if (d_begin[i] < d_end[i]) {
@@ -607,6 +607,9 @@ findModablePeptides
     const uint32_t      num_ma
 )
 {
+    std::cout << "findModablePeptides" << std::endl;
+    printGPUMemoryUsage();
+
     thrust::device_ptr<uint32_t> d_out_valid(d_out_valid_raw);
     thrust::device_ptr<uint32_t> d_out_pep_idx(d_out_pep_idx_raw);
     thrust::device_ptr<uint32_t> d_out_pep_mod_idx(d_out_pep_mod_idx_raw);

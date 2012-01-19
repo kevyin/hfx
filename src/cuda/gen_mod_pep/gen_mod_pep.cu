@@ -250,6 +250,8 @@ genModCands
     const uint32_t  num_ma
 )
 {
+    //std::cout << "gen_mod_pep" << std::endl;
+    //printGPUMemoryUsage();
 
 /*
     std::cout << "num_mpep " << num_mpep << std::endl;

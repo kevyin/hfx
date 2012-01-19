@@ -120,7 +120,7 @@ searchWithMods cp sdb ddb hmi dmi ms2 =
   --               pep_idx
   --               pep_mod_idx
   --          filter pep_cand_idx
-  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands -> 
+  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->
   -- generate modified candidates
   --          calc num_mpep for filtered cands
   --          calc ma_ncomb
@@ -128,6 +128,7 @@ searchWithMods cp sdb ddb hmi dmi ms2 =
   --          calc mpep_unrank
   mkModSpecXCorr ddb dmi modifiedCands (ms2charge ms2) (G.length spec)  $ \mspecThry   -> do
   --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
+  putStrLn "before sequestxcmod"
   mapMaybe finish `fmap` sequestXCMod cp hmi dmi modifiedCands spec mspecThry -- @TODO
   where
     spec            = sequestXCorr cp ms2
@@ -281,14 +282,14 @@ mkModSpecXCorr :: DeviceSeqDB
                -> Int
                -> (IonSeries -> IO b)
                -> IO b
-mkModSpecXCorr db dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, _) chrg len action =
+mkModSpecXCorr db dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank) chrg len action =
   let (num_ma, d_ma, d_ma_mass) = devModAcids dmi 
       (_, d_mod_ma_count, _, d_mod_delta) = devModCombs dmi 
-  in
+  in traceShow ("len spec", len, " numpep ", num_mpep, "n ", n) $
   CUDA.allocaArray n $ \d_mspec -> do
     let bytes = fromIntegral $ n * CUDA.sizeOfPtr d_mspec
     CUDA.memset  d_mspec bytes 0
-    CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_unrank d_mpep_mod_ma_count_sum_scan num_mpep d_mod_ma_count d_mod_delta d_ma d_ma_mass num_ma len ch
+    CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_unrank d_mpep_mod_ma_count_sum_scan len_unrank num_mpep d_mod_ma_count d_mod_delta d_ma d_ma_mass num_ma len ch
     --(t,_) <- bracketTime $ CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_idx d_mpep_unrank num_mpep d_mod_ma d_mod_ma_count d_mod_ma_mass mod_num_ma ch len
     --hPutStrLn stderr ("addModIons Elapsed time: " ++ showTime t)
 
@@ -375,7 +376,6 @@ sequestXCMod cp hmi dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_un
     --
     CUDA.mvm   d_score d_thry d_expr num_mpep (G.length expr)
     CUDA.rsort d_score d_mpep_idx num_mpep
-    putStrLn "sorted"
 
     -- Retrieve the most relevant matches
     --
@@ -387,7 +387,6 @@ sequestXCMod cp hmi dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_un
     mpep_unrank'      <- CUDA.peekListArray len_unrank d_mpep_unrank
     mpep_mod_ma_count_sum_scan' <- CUDA.peekListArray num_mpep d_mpep_mod_ma_count_sum_scan
 
-    putStrLn "sorted2"
     let mpep_idx         = map fromIntegral mpep_idx'
         mpep_pep_idx     = map fromIntegral mpep_pep_idx'
         mpep_unrank      = map fromIntegral mpep_unrank'
@@ -408,7 +407,7 @@ sequestXCMod cp hmi dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_un
         --pmod            = zipWith3 (\a b c -> (w2c a, fromIntegral b, c)) ma ma_count ma_mass
         getUnrank i mi = U.toList $ sublist (mpep_mod_ma_count_sum_scan !! i) 
                                     (mod_ma_count_sum U.! mi) $ U.fromList mpep_unrank
-    putStrLn "sorted3"
+
     return $ zipWith pack score mpep_idx
     where
         
