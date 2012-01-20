@@ -73,11 +73,12 @@ searchForMatches cp sdb ddb hmi dmi ms2 = do
   --(t,matches) <- bracketTime $ searchWithoutMods cp sdb ddb ms2 
   --when (verbose cp) $ hPutStrLn stderr ("searchWithoutMods Elapsed time: " ++ showTime t)
 
-  --matchesMods <- searchWithMods cp sdb ddb ms2 
-  (t,matchesMods) <- bracketTime $ searchWithMods cp sdb ddb hmi dmi ms2 
-  when (verbose cp) $ hPutStrLn stderr ("searchWithMods Elapsed time: " ++ showTime t)
+  matchesMods <- searchWithMods cp sdb ddb hmi dmi ms2 
+  --(t,matchesMods) <- bracketTime $ searchWithMods cp sdb ddb hmi dmi ms2 
+  --when (verbose cp) $ hPutStrLn stderr ("searchWithMods Elapsed time: " ++ showTime t)
 
-  return $ reverse $ sortBy matchScoreOrder $ matches ++ matchesMods
+  return $ sortBy matchScoreOrder $ matches ++ matchesMods
+  --return $ sortBy matchScoreOrder $ matches
 
 searchWithoutMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
 searchWithoutMods cp sdb ddb ms2 =
@@ -128,7 +129,6 @@ searchWithMods cp sdb ddb hmi dmi ms2 =
   --          calc mpep_unrank
   mkModSpecXCorr ddb dmi modifiedCands (ms2charge ms2) (G.length spec)  $ \mspecThry   -> do
   --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
-  putStrLn "before sequestxcmod"
   mapMaybe finish `fmap` sequestXCMod cp hmi dmi modifiedCands spec mspecThry -- @TODO
   where
     spec            = sequestXCorr cp ms2
@@ -285,7 +285,7 @@ mkModSpecXCorr :: DeviceSeqDB
 mkModSpecXCorr db dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank) chrg len action =
   let (num_ma, d_ma, d_ma_mass) = devModAcids dmi 
       (_, d_mod_ma_count, _, d_mod_delta) = devModCombs dmi 
-  in traceShow ("len spec", len, " numpep ", num_mpep, "n ", n) $
+  in 
   CUDA.allocaArray n $ \d_mspec -> do
     let bytes = fromIntegral $ n * CUDA.sizeOfPtr d_mspec
     CUDA.memset  d_mspec bytes 0
@@ -328,7 +328,7 @@ sequestXC :: ConfigParams -> CandidatesByMass -> Spectrum -> IonSeries -> IO [(F
 sequestXC cp (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatchesDetail cp) in
   CUDA.withVector  expr $ \d_expr  ->
   CUDA.allocaArray nIdx $ \d_score -> do
-    when (verbose cp) $ hPutStrLn stderr ("Matched peptides: " ++ show nIdx)
+    --when (verbose cp) $ hPutStrLn stderr ("Matched peptides: " ++ show nIdx)
 
     -- There may be no candidates as a result of bad database search parameters,
     -- or if something unexpected happened (out of memory)
@@ -369,7 +369,7 @@ sequestXCMod cp hmi dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_un
   CUDA.withVector  h_mpep_idx       $ \d_mpep_idx -> 
 
   CUDA.allocaArray num_mpep         $ \d_score -> do
-    when (verbose cp) $ hPutStrLn stderr ("Candidate modified peptides: " ++ show num_mpep)
+    --when (verbose cp) $ hPutStrLn stderr ("Candidate modified peptides: " ++ show num_mpep)
 
 
     -- Score and rank each candidate sequence

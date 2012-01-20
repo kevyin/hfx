@@ -607,8 +607,8 @@ findModablePeptides
     const uint32_t      num_ma
 )
 {
-    std::cout << "findModablePeptides" << std::endl;
-    printGPUMemoryUsage();
+    //std::cout << "findModablePeptides" << std::endl;
+    //printGPUMemoryUsage();
 
     thrust::device_ptr<uint32_t> d_out_valid(d_out_valid_raw);
     thrust::device_ptr<uint32_t> d_out_pep_idx(d_out_pep_idx_raw);

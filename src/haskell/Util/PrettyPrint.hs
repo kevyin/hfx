@@ -13,6 +13,7 @@ module Util.PrettyPrint
   (
     Pretty(..),
 
+    printAllResults,
     printConfig,
     printResults,
     printResultsDetail,
@@ -29,6 +30,7 @@ import Spectrum.Data
 import Numeric
 import Data.List
 import Data.Maybe
+import Control.Monad
 import Text.PrettyPrint
 
 import qualified Text.PrettyPrint.Boxes     as B
@@ -138,6 +140,15 @@ toIonDetail cp (Match f _ (b,y) _ _) = map (B.vcat B.right)
         pep           = L.drop 2 $ L.take (L.length (fragdata f) - 2) (fragdata f)
         ladder        = scanl1 (+) . map (getAAMass cp) $ L.unpack pep
 
+printAllResults :: ConfigParams -> [(MS2Data, Match)] -> IO ()
+printAllResults cp mm =  displayIO . ppAsRows 1 . (++) title . snd . mapAccumL k 1 $ mm
+    where
+        s0  = scoreXC . snd . head $ mm
+        --k n (ms2,z) = (n+1, (toDoc n s0 z) ++ [ppr (ms2info ms2)])
+        k n (ms2,z) = (n+1, (toDoc n s0 z))
+
+--forM_ matches $ \(ms2,match) -> do
+    --printResults $! [match]
 
 printResults   :: MatchCollection -> IO ()
 printResults m =  displayIO . ppAsRows 1 . (++) title . snd . mapAccumL k 1 $ m
