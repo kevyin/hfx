@@ -28,6 +28,7 @@ mod_N                   = 29
 #
 # Results display
 #
-num-matches             = 20
+show-matches-per-scan   = True
+num-matches             = 40
 num-matches-detail      = 3
 

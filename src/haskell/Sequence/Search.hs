@@ -68,12 +68,14 @@ type PepModDevice = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float
 -- given experimental spectrum.
 --
 searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
-searchForMatches cp sdb ddb hmi dmi ms2 = do
+searchForMatches cp sdb ddb hmi dmi ms2 = 
+  let (num_ma,_,_) = modAcids hmi in do
   matches <- searchWithoutMods cp sdb ddb ms2 
   --(t,matches) <- bracketTime $ searchWithoutMods cp sdb ddb ms2 
   --when (verbose cp) $ hPutStrLn stderr ("searchWithoutMods Elapsed time: " ++ showTime t)
-
-  matchesMods <- searchWithMods cp sdb ddb hmi dmi ms2 
+  matchesMods <- case dmi of
+                    NoDMod -> return []
+                    _      -> searchWithMods cp sdb ddb hmi dmi ms2 
   --(t,matchesMods) <- bracketTime $ searchWithMods cp sdb ddb hmi dmi ms2 
   --when (verbose cp) $ hPutStrLn stderr ("searchWithMods Elapsed time: " ++ showTime t)
 

@@ -117,22 +117,22 @@ search cp db hmi dmi dev fp =
     Right d -> do 
       (t,allMatches) <- bracketTime $ forM d $ \ms2 -> do
         matches <- searchForMatches cp db dev hmi dmi ms2
+        when (showMatchesPerScan cp) $ do
+            printConfig cp fp ms2
+            printResults           $! take (numMatches cp)       matches
+            printResultsDetail     $! take (numMatchesDetail cp) matches
+            --printIonMatchDetail cp $! take (numMatchesIon cp)    matches
         return $ map (\m -> (ms2, m)) matches
         `catch`
         \(e :: SomeException) -> do 
                 hPutStrLn stderr $ unlines [ "scan:   " ++ (show $ ms2info ms2), "reason: " ++ show e ]
                 return []
+
       when (verbose cp) $ hPutStrLn stderr ("Elapsed time: " ++ showTime t)
 
       let n = maximum $ [(numMatches cp), (numMatchesDetail cp), (numMatchesIon cp)]
           toPrint = take n $! sortBy (\(_,a) (_,b) -> compare (scoreXC b) (scoreXC a)) $ concat allMatches
       printAllResults cp toPrint
-     
-
-      --printConfig cp fp ms2
-      --printResults           $! take (numMatches cp)       matches
-      --printResultsDetail     $! take (numMatchesDetail cp) matches
-      ----printIonMatchDetail cp $! take (numMatchesIon cp)    matches
       `catch`
       \(e :: SomeException) -> hPutStrLn stderr $ unlines
               [ "file:   " ++ fp

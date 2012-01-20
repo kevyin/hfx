@@ -132,7 +132,9 @@ instance Binary SequenceDB where
   {-# INLINE get #-}
   get = liftM5 SeqDB get get get (liftM3 G.zip3 get get get) get
 
-data HostModInfo = HostModInfo
+data HostModInfo = 
+    NoHMod
+  | HostModInfo
   {
     -- num_ma, ma, ma_mass (mass change)
     modAcids         :: (Int, U.Vector Char, U.Vector Float), 
@@ -142,7 +144,9 @@ data HostModInfo = HostModInfo
   }
   deriving Show
 
-data DeviceModInfo = DevModInfo
+data DeviceModInfo = 
+    NoDMod
+  | DevModInfo
   {
     -- num_ma, d_ma, d_ma_mass (mass change)
     devModAcids         :: (Int, CUDA.DevicePtr Word8, CUDA.DevicePtr Float), 
@@ -232,7 +236,8 @@ withDeviceDB cp sdb action =
       action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n))
 
 makeModInfo :: ConfigParams -> SequenceDB -> IO HostModInfo
-makeModInfo cp sdb = do
+makeModInfo cp sdb = if (num_ma < 1) then return NoHMod
+  else do
     let (r,_,_) = G.unzip3 (dbFrag sdb)
     pep_idx <- U.unsafeThaw $ U.enumFromN 0 (G.length r) 
     VA.sortBy (\i j -> compare (r G.! i) (r G.! j)) pep_idx
@@ -272,15 +277,17 @@ withDevModInfo hmi action =
     let (num_ma, ma, ma_mass) = modAcids hmi
         (num_mod, mod_ma_count, mod_ma_count_sum, mod_delta) = modCombs hmi
         pep_idx_r_sorted = resIdxSort hmi
-    in
-    CUDA.withVector (U.map c2w ma)   $ \d_ma        ->
-    CUDA.withVector ma_mass          $ \d_ma_mass   ->
-    CUDA.withVector mod_delta        $ \d_mod_delta ->
-    CUDA.withVector (U.map fromIntegral mod_ma_count)     $ \d_mod_ma_count ->
-    CUDA.withVector (U.map fromIntegral mod_ma_count_sum) $ \d_mod_ma_count_sum -> 
-    CUDA.withVector (U.map fromIntegral pep_idx_r_sorted) $ \d_r_sorted -> 
+    in case hmi of
+      NoHMod    -> action NoDMod
+      _         -> 
+        CUDA.withVector (U.map c2w ma)   $ \d_ma        ->
+        CUDA.withVector ma_mass          $ \d_ma_mass   ->
+        CUDA.withVector mod_delta        $ \d_mod_delta ->
+        CUDA.withVector (U.map fromIntegral mod_ma_count)     $ \d_mod_ma_count ->
+        CUDA.withVector (U.map fromIntegral mod_ma_count_sum) $ \d_mod_ma_count_sum -> 
+        CUDA.withVector (U.map fromIntegral pep_idx_r_sorted) $ \d_r_sorted -> 
 
-      action (DevModInfo (num_ma, d_ma, d_ma_mass) (num_mod, d_mod_ma_count, d_mod_ma_count_sum, d_mod_delta) d_r_sorted)
+          action (DevModInfo (num_ma, d_ma, d_ma_mass) (num_mod, d_mod_ma_count, d_mod_ma_count_sum, d_mod_delta) d_r_sorted)
     
 --------------------------------------------------------------------------------
 -- Digestion
