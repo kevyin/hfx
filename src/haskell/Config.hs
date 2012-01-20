@@ -88,6 +88,7 @@ data ConfigParams = ConfigParams
     -- Output configuration
     --
     verbose             :: Bool,
+    showMatchesPerScan  :: Bool,
     numMatches          :: Int,         -- # matches to show (summary statistics)
     numMatchesDetail    :: Int,         -- # full protein descriptions to show
     numMatchesIon       :: Int          -- # ion matching ladders to show
@@ -237,6 +238,7 @@ baseParams =  ConfigParams
         useCPU              = False,
 
         verbose             = False,
+        showMatchesPerScan  = True,
         numMatches          = 5,
         numMatchesDetail    = 3,
         numMatchesIon       = 1
@@ -342,6 +344,13 @@ options =
     , Option "v" ["verbose"]
         (NoArg (\cp -> return cp { verbose = True }))
         "Extra output on stderr"
+
+    , Option "" ["show-matches-per-scan"]
+        (OptArg (\v cp -> return $ case v of
+                            Nothing    -> cp { showMatchesPerScan = True }
+                            Just []    -> cp { showMatchesPerScan = True }
+                            Just (x:_) -> cp { showMatchesPerScan = toLower x `elem` "t1" }) "True|False") 
+        "Print top matches for each scan"
 
     , Option "V" ["version"]
         (NoArg (\_ -> do hPutStrLn stderr ("sequest version " ++ showVersion version)

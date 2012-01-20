@@ -99,6 +99,10 @@ title :: [[Doc]]
 title = map (map text) [[" # ", " (M+H)+  ", "deltCn", "XCorr", "Ions", "Reference", "Peptide"],
                         ["---", "---------", "------", "-----", "----", "---------", "-------"]]
 
+titleAll :: [[Doc]]
+titleAll = map (map text) [[" # ", " (M+H)+  ", "deltCn", "XCorr", "Ions", "Reference", "Peptide", "Scan details"],
+                        ["---", "---------", "------", "-----", "----", "---------", "-------", "------------"]]
+
 titleIon :: [B.Box]
 titleIon = map (B.vcat B.center2)
          $ transpose [["Seq",  "#",     "B ",         "Y ",    "(+1)"]
@@ -141,11 +145,11 @@ toIonDetail cp (Match f _ (b,y) _ _) = map (B.vcat B.right)
         ladder        = scanl1 (+) . map (getAAMass cp) $ L.unpack pep
 
 printAllResults :: ConfigParams -> [(MS2Data, Match)] -> IO ()
-printAllResults cp mm =  displayIO . ppAsRows 1 . (++) title . snd . mapAccumL k 1 $ mm
+printAllResults cp mm =  displayIO . ppAsRows 1 . (++) titleAll . snd . mapAccumL k 1 $ mm
     where
         s0  = scoreXC . snd . head $ mm
-        --k n (ms2,z) = (n+1, (toDoc n s0 z) ++ [ppr (ms2info ms2)])
-        k n (ms2,z) = (n+1, (toDoc n s0 z))
+        k n (ms2,z) = (n+1, (toDoc n s0 z) ++ [ppr (ms2info ms2)])
+        --k n (ms2,z) = (n+1, (toDoc n s0 z))
 
 --forM_ matches $ \(ms2,match) -> do
     --printResults $! [match]
