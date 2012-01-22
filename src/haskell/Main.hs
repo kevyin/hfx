@@ -96,22 +96,6 @@ loadDatabase cp fp = do
 --
 search :: ConfigParams -> SequenceDB -> HostModInfo -> DeviceModInfo ->  DeviceSeqDB -> FilePath -> IO ()
 search cp db hmi dmi dev fp =
-  --readMS2Data fp >>= \r -> case r of
-    --Left  s -> hPutStrLn stderr s
-    --Right d -> forM_ d $ \ms2 -> do
-      --(t,matches) <- bracketTime $ searchForMatches cp db dev hmi dmi ms2
-      --when (verbose cp) $ hPutStrLn stderr ("Elapsed time: " ++ showTime t)
-
-      --printConfig cp fp ms2
-      --printResults           $! take (numMatches cp)       matches
-      --printResultsDetail     $! take (numMatchesDetail cp) matches
-      ----printIonMatchDetail cp $! take (numMatchesIon cp)    matches
-  --`catch`
- -- \(e :: SomeException) -> hPutStrLn stderr $ unlines
-          --[ "file:   " ++ fp
-          --, "reason: " ++ show e ]
-
---search cp db hmi dmi dev fp =
   readMS2Data fp >>= \r -> case r of
     Left  s -> hPutStrLn stderr s
     Right d -> do 

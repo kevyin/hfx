@@ -42,13 +42,14 @@ import Control.Monad
 import System.IO
 import Prelude                                  hiding (lookup)
 
+import Foreign (sizeOf)
 import Foreign.CUDA (DevicePtr)
 import qualified Data.Vector.Generic            as G
 import qualified Data.Vector.Unboxed            as U
 import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
 import qualified Foreign.CUDA.Algorithms        as CUDA
---import qualified Foreign.CUDA.Stream            as CUDA
+import Foreign.CUDA.Driver.Marshal (getMemInfo)
 
 import Debug.Trace
 
@@ -59,6 +60,7 @@ type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32,
 type IonSeries  = DevicePtr Word32
 
 type PepModDevice = (Int, DevicePtr Word8, DevicePtr Word8, Int, DevicePtr Float)
+type SearchSection = (Int, Int)
 --------------------------------------------------------------------------------
 -- Search
 --------------------------------------------------------------------------------
@@ -129,9 +131,12 @@ searchWithMods cp sdb ddb hmi dmi ms2 =
   --          calc ma_ncomb
   --          calc na_ncomb_scan
   --          calc mpep_unrank
-  mkModSpecXCorr ddb dmi modifiedCands (ms2charge ms2) (G.length spec)  $ \mspecThry   -> do
-  --mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)              $ \specThry   -> -- @TODO delete later
-  mapMaybe finish `fmap` sequestXCMod cp hmi dmi modifiedCands spec mspecThry -- @TODO
+  
+  mapMaybe finish `fmap` scoreModCandidates cp ddb hmi dmi modifiedCands (ms2charge ms2) (G.length spec) spec
+  
+  --mkModSpecXCorr ddb dmi modifiedCands (ms2charge ms2) (G.length spec)  $ \mspecThry   -> do
+
+  --mapMaybe finish `fmap` sequestXCMod cp hmi dmi modifiedCands spec mspecThry 
   where
     spec            = sequestXCorr cp ms2
     peaks           = extractPeaks spec
@@ -196,7 +201,7 @@ filterCandidateByModMass cp ddb dmi mass action =
   in
   CUDA.allocaArray num_mod $ \d_begin ->
   CUDA.allocaArray num_mod $ \d_end ->
-  CUDA.allocaArray num_mod $ \d_num_pep -> do
+  CUDA.allocaArray num_mod $ \d_num_pep -> 
   CUDA.allocaArray num_mod $ \d_num_pep_scan-> do
   CUDA.findBeginEnd d_begin d_end d_num_pep d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_pep_total -> do
   action (d_begin, d_end, num_pep_total, d_num_pep, d_num_pep_scan)
@@ -256,10 +261,6 @@ genModCandidates cp ddb dmi (num_pep, d_pep_valid_idx, d_pep_idx, d_pep_mod_idx,
   CUDA.allocaArray (num_pep*num_ma) $ \d_pep_ma_num_comb_scan -> 
   CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan d_mod_ma_count d_pep_idx d_pep_mod_idx d_pep_ma_count d_pep_valid_idx num_pep num_mod num_ma >>= \num_mpep -> 
 
-  --CUDA.sum_Word32 d_mod_ma_count_sum num_mod >>= \ma_count_sum_total ->
-  --CUDA.scan d_mod_ma_count_sum_scan d_mod_ma_count_sum num_mod >>= \ma_count_sum_total ->
-  ----action num_mpep
-  ----
   CUDA.allocaArray num_mpep $ \d_mpep_pep_idx -> 
   CUDA.allocaArray num_mpep $ \d_mpep_pep_mod_idx -> 
   CUDA.allocaArray num_mpep $ \d_mpep_rank -> 
@@ -277,27 +278,78 @@ genModCandidates cp ddb dmi (num_pep, d_pep_valid_idx, d_pep_idx, d_pep_mod_idx,
       --when (verbose cp) $ hPutStrLn stderr ("genModCands Elapsed time: " ++ showTime t)
       --action (num_mpep, d_mpep_idx, d_mpep_unrank)
 
+scoreModCandidates :: ConfigParams 
+                   -> DeviceSeqDB
+                   -> HostModInfo 
+                   -> DeviceModInfo 
+                   -> ModCandidates 
+                   -> Float
+                   -> Int
+                   -> Spectrum 
+                   -> IO [(Float,Int,PepMod,[Int])]
+scoreModCandidates cp ddb hmi dmi mcands chrg len expr = 
+  let (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, 
+       d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank) = mcands
+      (num_ma, d_ma, d_ma_mass) = devModAcids dmi 
+      (_, d_mod_ma_count, _, d_mod_delta) = devModCombs dmi 
+      memPerPep = len * sizeOf (undefined :: Word32) -- d_mspec
+                + sizeOf (undefined :: Word32) -- d_mpep_idx
+                + sizeOf (undefined :: Float) -- d_score
+      totalReqMem = num_mpep * memPerPep
+  in
+  if num_mpep == 0 then return [] else 
+  CUDA.withVector expr $ \d_expr -> 
+  getMemInfo >>= \(freeMem,_) ->
+  
+  -- predict memory needed and split work accordingly
+  let ratio = (fromIntegral totalReqMem) / (fromIntegral freeMem)
+      split = (if ratio < 1 then 1 else 1 + ceiling ratio)  -- +1 to stay well within limit
+      most = ceiling $ (fromIntegral num_mpep) / (fromIntegral split) -- most number to score at once
+      sections = map k [1..split] -- (start pos, number to score)
+        where
+          k n = let next = n*most in 
+                (next - most, if next < num_mpep then most else most - (next - num_mpep))
+  in
+
+  CUDA.allocaArray (len*most) $ \d_mspecThry -> 
+  CUDA.allocaArray most       $ \d_score -> 
+  CUDA.allocaArray most       $ \d_mpep_idx -> do
+    {-when (verbose cp) $ hPutStrLn stderr-}
+                      {-$ "Free memory " ++ show freeMem ++ "\n"-}
+                        {-++ "Memory required per peptide " ++ show memPerPep ++ "\n"-}
+                        {-++ "Total memory required " ++ show totalReqMem ++ "\n"-}
+                        {-++ "Total / Free " ++ show ratio ++ "\n"-}
+                        {-++ "Number jobs to split into " ++ show split ++ "\n"-}
+    res <- forM sections $ \s -> do
+      --putStrLn $ "section " ++ show (fst s)
+      mkModSpecXCorr ddb dmi mcands chrg len d_mspecThry s
+      sequestXCMod cp hmi dmi mcands expr d_expr d_mspecThry d_score d_mpep_idx s
+    return $ concat res  
+
+      {-return []-}
+
 mkModSpecXCorr :: DeviceSeqDB
                -> DeviceModInfo
                -> ModCandidates
                -> Float
                -> Int
-               -> (IonSeries -> IO b)
-               -> IO b
-mkModSpecXCorr db dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank) chrg len action =
+               -> IonSeries
+               -> SearchSection
+               -> IO ()
+mkModSpecXCorr db dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank) chrg len d_mspec (start, nsearch) =
   let (num_ma, d_ma, d_ma_mass) = devModAcids dmi 
       (_, d_mod_ma_count, _, d_mod_delta) = devModCombs dmi 
-  in 
-  CUDA.allocaArray n $ \d_mspec -> do
+  in do
+  --CUDA.allocaArray n $ \d_mspec -> do
     let bytes = fromIntegral $ n * CUDA.sizeOfPtr d_mspec
     CUDA.memset  d_mspec bytes 0
-    CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_unrank d_mpep_mod_ma_count_sum_scan len_unrank num_mpep d_mod_ma_count d_mod_delta d_ma d_ma_mass num_ma len ch
+    CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_unrank d_mpep_mod_ma_count_sum_scan len_unrank num_mpep d_mod_ma_count d_mod_delta d_ma d_ma_mass num_ma len ch start nsearch
     --(t,_) <- bracketTime $ CUDA.addModIons d_mspec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_mpep_idx d_mpep_unrank num_mpep d_mod_ma d_mod_ma_count d_mod_ma_mass mod_num_ma ch len
     --hPutStrLn stderr ("addModIons Elapsed time: " ++ showTime t)
 
-    action d_mspec
+    --action d_mspec
   where
-    n = len * num_mpep
+    n = len * nsearch
     ch = round $ max 1 (chrg - 1)
 
 --
@@ -353,9 +405,10 @@ sequestXC cp (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatches
     return $ zipWith (\s i -> (s/10000,fromIntegral i)) sc ix
 
 -- Modified candidates version
-sequestXCMod :: ConfigParams -> HostModInfo -> DeviceModInfo -> ModCandidates -> Spectrum -> IonSeries -> IO [(Float,Int,PepMod,[Int])]
-sequestXCMod cp hmi dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank) expr d_thry = 
-  let (num_ma, d_ma, d_ma_mass) = devModAcids dmi 
+sequestXCMod :: ConfigParams -> HostModInfo -> DeviceModInfo -> ModCandidates -> Spectrum -> DevicePtr Float -> IonSeries -> DevicePtr Float -> DevicePtr Word32 -> SearchSection -> IO [(Float,Int,PepMod,[Int])]
+sequestXCMod cp hmi dmi (_, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank) expr d_expr d_thry d_score d_mpep_idx (start, nsearch) = 
+  let num_mpep = nsearch
+      (num_ma, d_ma, d_ma_mass) = devModAcids dmi 
       (num_mod, d_mod_ma_count, d_mod_ma_count_sum, d_mod_delta) = devModCombs dmi 
       (_, ma, ma_mass) = modAcids hmi
       (_, mod_ma_count, mod_ma_count_sum, _) = modCombs hmi
@@ -366,11 +419,13 @@ sequestXCMod cp hmi dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_un
     -- There may be no candidates as a result of bad database search parameters,
     -- or if something unexpected happened (out of memory)
     --
-  if num_mpep == 0 then return [] else 
-  CUDA.withVector  expr             $ \d_expr -> 
-  CUDA.withVector  h_mpep_idx       $ \d_mpep_idx -> 
+  if num_mpep == 0 then return [] else do
+  --CUDA.withVector  expr             $ \d_expr -> 
+  --CUDA.withVector  h_mpep_idx       $ \d_mpep_idx -> 
 
-  CUDA.allocaArray num_mpep         $ \d_score -> do
+  --CUDA.allocaArray num_mpep         $ \d_score -> do
+      
+    CUDA.copyVector h_mpep_idx d_mpep_idx
     --when (verbose cp) $ hPutStrLn stderr ("Candidate modified peptides: " ++ show num_mpep)
 
 
@@ -384,10 +439,10 @@ sequestXCMod cp hmi dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_un
     let n = min n' num_mpep
     score             <- CUDA.peekListArray n d_score
     mpep_idx'         <- CUDA.peekListArray n d_mpep_idx
-    mpep_pep_idx'     <- CUDA.peekListArray num_mpep d_mpep_pep_idx
-    mpep_pep_mod_idx' <- CUDA.peekListArray num_mpep d_mpep_pep_mod_idx
+    mpep_pep_idx'     <- CUDA.peekListArray num_mpep (d_mpep_pep_idx `CUDA.advanceDevPtr` start)
+    mpep_pep_mod_idx' <- CUDA.peekListArray num_mpep (d_mpep_pep_mod_idx  `CUDA.advanceDevPtr` start)
     mpep_unrank'      <- CUDA.peekListArray len_unrank d_mpep_unrank
-    mpep_mod_ma_count_sum_scan' <- CUDA.peekListArray num_mpep d_mpep_mod_ma_count_sum_scan
+    mpep_mod_ma_count_sum_scan' <- CUDA.peekListArray num_mpep (d_mpep_mod_ma_count_sum_scan `CUDA.advanceDevPtr` start)
 
     let mpep_idx         = map fromIntegral mpep_idx'
         mpep_pep_idx     = map fromIntegral mpep_pep_idx'

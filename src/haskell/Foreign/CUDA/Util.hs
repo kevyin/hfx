@@ -9,6 +9,7 @@
 module Foreign.CUDA.Util
   (
     sizeOfPtr,
+    copyVector,
     withVector
   ) where
 
@@ -27,6 +28,14 @@ import Foreign.CUDA              as CUDA
 sizeOfPtr :: Storable a => DevicePtr a -> Int
 sizeOfPtr =  sizeOf . (undefined :: DevicePtr a -> a)
 
+{-# INLINE copyVector #-}
+copyVector :: (G.Vector v a, Storable a) => v a -> DevicePtr a -> IO ()  
+copyVector vec d_ptr = let l = G.length vec in
+  bracket (CUDA.mallocHostArray [] l) CUDA.freeHost $ \h_ptr ->
+    withHostPtr h_ptr $ \ptr ->
+      Stream.foldM' (\p e -> poke p e >> return (p `advancePtr` 1)) ptr (G.stream vec) >>
+      CUDA.pokeArrayAsync l h_ptr d_ptr Nothing
+  
 
 --
 -- Copy a vector to the device and perform a computation, returning the result.

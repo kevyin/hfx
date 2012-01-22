@@ -195,8 +195,8 @@ addModIons :: DevicePtr Word32
            -> DevicePtr Float 
            -> DevicePtr Word8
            -> DevicePtr Float
-           -> Int -> Int -> Int -> IO ()
-addModIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19=
+           -> Int -> Int -> Int -> Int -> Int -> IO ()
+addModIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 =
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
   withDevicePtr a3 $ \a3' ->
@@ -216,10 +216,12 @@ addModIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19=
   --withDevicePtr a17 $ \a17' ->
   --withDevicePtr a18 $ \a18' ->
   --withDevicePtr a19 $ \a19' ->
-  addModIons'_ a1' a2' a3' a4' a5' a6' a7' a8' a9' a10' (cIntConv a11) (cIntConv a12) a13' a14' a15' a16' (cIntConv a17) (cIntConv a18) (cIntConv a19)
+  --withDevicePtr a20 $ \a20' ->
+  --withDevicePtr a21 $ \a21' ->
+  addModIons'_ a1' a2' a3' a4' a5' a6' a7' a8' a9' a10' (cIntConv a11) (cIntConv a12) a13' a14' a15' a16' (cIntConv a17) (cIntConv a18) (cIntConv a19) (cIntConv a20) (cIntConv a21)
 
 foreign import ccall unsafe "algorithms.h addModIons"
-  addModIons'_ :: Ptr Word32 -> Ptr Float -> Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 ->  Word32 -> Ptr Word32 -> Ptr Float -> Ptr Word8 -> Ptr Float -> Word32 -> Word32 -> Word32 -> IO ()
+  addModIons'_ :: Ptr Word32 -> Ptr Float -> Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 ->  Word32 -> Ptr Word32 -> Ptr Float -> Ptr Word8 -> Ptr Float -> Word32 -> Word32 -> Word32 -> Word32 -> Word32 -> IO ()
 
 addIons :: DevicePtr Word32 -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> Int -> Int -> Int -> IO ()
 addIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 =
