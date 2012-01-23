@@ -75,18 +75,17 @@ main = do
     hmi <- makeModInfo cp' db
     withDevModInfo hmi $ \dmi -> do
       withDeviceDB cp' db $ \ddb -> forM dta $ \f -> do
-          search cp' db hmi dmi ddb f
+        matches <- search cp' db hmi dmi ddb f
+        when (showMatchesPerScan cp) $ printScanResults cp' f matches
+        return matches
           
 
   let sortXC = sortBy (\(_,_,a) (_,_,b) -> compare (scoreXC b) (scoreXC a))
       matchesRaw = concat $ concat $ concat allMatches'
-      matchesByScan = map sortXC $ groupBy (\(_,ms,_) (_,ms',_) -> ms == ms') matchesRaw
-      matchesByFile = map sortXC $ groupBy (\(f,_,_) (f',_,_) -> f == f') matchesRaw
+      --matchesByScan = map sortXC $ groupBy (\(_,ms,_) (_,ms',_) -> ms == ms') matchesRaw
+      --matchesByFile = map sortXC $ groupBy (\(f,_,_) (f',_,_) -> f == f') matchesRaw
       n = maximum $ [(numMatches cp'), (numMatchesDetail cp'), (numMatchesIon cp')]
       allMatchesN = take n $! sortXC $ matchesRaw
-
-  --when (showMatchesPerScan cp) $ printScanResults cp' f matchesByScan
-  --when (showMatchesPerSpecFile cp) $ printSpecfileResults cp' f matchesByFile
 
   printAllResults cp' allMatchesN
     

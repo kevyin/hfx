@@ -178,8 +178,8 @@ data DeviceSeqDB = DevDB
 -- segmenting information describing the boundaries of the original Proteins
 -- they derive from.
 --
-{-# INLINE makeSeqDB #-}
 makeSeqDB :: ConfigParams -> FilePath -> Int -> IO [SequenceDB]
+{-# INLINE makeSeqDB #-}
 makeSeqDB cp fp split = do
   --ns <- countSeqs fp
   db' <- readFasta fp
@@ -240,6 +240,7 @@ withDeviceDB cp sdb action =
       action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n))
 
 makeModInfo :: ConfigParams -> SequenceDB -> IO HostModInfo
+{-# INLINE makeModInfo #-}
 makeModInfo cp sdb = if (num_ma < 1) then return NoHMod
   else do
     let (r,_,_) = G.unzip3 (dbFrag sdb)
@@ -277,6 +278,7 @@ makeModInfo cp sdb = if (num_ma < 1) then return NoHMod
             (x,_:ys) = splitAt idx list
 
 withDevModInfo :: HostModInfo -> (DeviceModInfo -> IO a) -> IO a
+{-# INLINE withDevModInfo #-}
 withDevModInfo hmi action = 
     let (num_ma, ma, ma_mass) = modAcids hmi
         (num_mod, mod_ma_count, mod_ma_count_sum, mod_delta) = modCombs hmi
