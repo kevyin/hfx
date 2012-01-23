@@ -178,42 +178,46 @@ data DeviceSeqDB = DevDB
 -- segmenting information describing the boundaries of the original Proteins
 -- they derive from.
 --
-makeSeqDB :: ConfigParams -> FilePath -> IO SequenceDB
 {-# INLINE makeSeqDB #-}
-makeSeqDB cp fp = do
-  ns <- countSeqs fp
-  db <- readFasta fp
+makeSeqDB :: ConfigParams -> FilePath -> Int -> IO [SequenceDB]
+makeSeqDB cp fp split = do
+  --ns <- countSeqs fp
+  db' <- readFasta fp
+  let ns'  = length db'
+      sections = sectionsOfSplit ns' split
 
-  let hdr  = headers ns db
-      iseg = ionSeg  ns db
-      ions = ionSeq (fromIntegral (U.last iseg)) db
-      nf   = countFrags cp ions
+  forM sections $ \(beg, ns) -> do
+      let db   = sublist beg ns db'
+          hdr  = headers ns db
+          iseg = ionSeg  ns db
+          ions = ionSeq (fromIntegral (U.last iseg)) db
+          nf   = countFrags cp ions
 
-  f  <- GM.new nf               -- maximum number as estimated above, trim later
-  fs <- GM.new (ns+1)           -- include the zero index
+      f  <- GM.new nf               -- maximum number as estimated above, trim later
+      fs <- GM.new (ns+1)           -- include the zero index
 
-  --
-  -- OPT: make versions that operate directly from (unboxed) streams?
-  --
-  let write !i !v = do GM.unsafeWrite f i v
-                       return (i+1)
+      --
+      -- OPT: make versions that operate directly from (unboxed) streams?
+      --
+      let write !i !v = do GM.unsafeWrite f i v
+                           return (i+1)
 
-  let fill (!i,!n) (!x,!y) = do GM.unsafeWrite fs i (fromIntegral n)
-                                n' <- foldM write n (digest cp ions (x,y))
-                                return (i+1, n')
+      let fill (!i,!n) (!x,!y) = do GM.unsafeWrite fs i (fromIntegral n)
+                                    n' <- foldM write n (digest cp ions (x,y))
+                                    return (i+1, n')
 
-  --
-  -- Now iterate over all of the protein sequences, keeping track of the segment
-  -- number and number of fragments generated so far, so we can also fill in the
-  -- fragment segmenting information.
-  --
-  nf' <- snd <$> G.foldM' fill (0,0) (G.zip iseg (G.tail iseg))
-  GM.unsafeWrite fs ns (fromIntegral nf')
+      --
+      -- Now iterate over all of the protein sequences, keeping track of the segment
+      -- number and number of fragments generated so far, so we can also fill in the
+      -- fragment segmenting information.
+      --
+      nf' <- snd <$> G.foldM' fill (0,0) (G.zip iseg (G.tail iseg))
+      GM.unsafeWrite fs ns (fromIntegral nf')
 
-  f'  <- G.unsafeFreeze (GM.take nf' f)
-  fs' <- G.unsafeFreeze fs
+      f'  <- G.unsafeFreeze (GM.take nf' f)
+      fs' <- G.unsafeFreeze fs
 
-  return $ SeqDB hdr ions iseg f' fs'
+      return $ SeqDB hdr ions iseg f' fs'
 
 
 --

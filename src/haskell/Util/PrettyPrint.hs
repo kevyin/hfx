@@ -13,6 +13,7 @@ module Util.PrettyPrint
   (
     Pretty(..),
 
+    printScanResults, 
     printAllResults,
     printConfig,
     printResults,
@@ -100,8 +101,8 @@ title = map (map text) [[" # ", " (M+H)+  ", "deltCn", "XCorr", "Ions", "Referen
                         ["---", "---------", "------", "-----", "----", "---------", "-------"]]
 
 titleAll :: [[Doc]]
-titleAll = map (map text) [[" # ", " (M+H)+  ", "deltCn", "XCorr", "Ions", "Reference", "Peptide", "Scan details"],
-                        ["---", "---------", "------", "-----", "----", "---------", "-------", "------------"]]
+titleAll = map (map text) [[" # ", " (M+H)+  ", "deltCn", "XCorr", "Ions", "Reference", "Peptide", "Scan details", "File"],
+                        ["---", "---------", "------", "-----", "----", "---------", "-------", "------------", "----"]]
 
 titleIon :: [B.Box]
 titleIon = map (B.vcat B.center2)
@@ -144,11 +145,22 @@ toIonDetail cp (Match f _ (b,y) _ _) = map (B.vcat B.right)
         pep           = L.drop 2 $ L.take (L.length (fragdata f) - 2) (fragdata f)
         ladder        = scanl1 (+) . map (getAAMass cp) $ L.unpack pep
 
-printAllResults :: ConfigParams -> [(MS2Data, Match)] -> IO ()
+
+printScanResults :: ConfigParams -> FilePath -> [[(FilePath, MS2Data, Match)]] -> IO ()
+printScanResults cp fp mms = do
+  forM_ mms $ \mm -> do 
+    let (_, ms2s ,matches) = unzip3 mm 
+    printConfig cp "--" (head ms2s) -- assume ms2 are same, use the first
+    printResults           $! take (numMatches cp)       matches
+    printResultsDetail     $! take (numMatchesDetail cp) matches
+    --printIonMatchDetail cp $! take (numMatchesIon cp)    matches
+
+printAllResults :: ConfigParams -> [(FilePath, MS2Data, Match)] -> IO ()
 printAllResults cp mm =  displayIO . ppAsRows 1 . (++) titleAll . snd . mapAccumL k 1 $ mm
     where
-        s0  = scoreXC . snd . head $ mm
-        k n (ms2,z) = (n+1, (toDoc n s0 z) ++ [ppr (ms2info ms2)])
+        (_,ms20,m0) = head mm
+        s0  = scoreXC m0
+        k n (f,ms2,z) = (n+1, (toDoc n s0 z) ++ [ppr (ms2info ms2)] ++ [text f])
         --k n (ms2,z) = (n+1, (toDoc n s0 z))
 
 --forM_ matches $ \(ms2,match) -> do

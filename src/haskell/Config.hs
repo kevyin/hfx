@@ -83,6 +83,7 @@ data ConfigParams = ConfigParams
     -- Process configuration
     --
     useCPU              :: Bool,
+    splitDB             :: Int,
 
     --
     -- Output configuration
@@ -236,6 +237,7 @@ baseParams =  ConfigParams
         variableMods        = U.replicate (26) 0, -- 26 letters, ie [A-Z]
 
         useCPU              = False,
+        splitDB             = 1,
 
         verbose             = False,
         showMatchesPerScan  = True,
@@ -328,10 +330,6 @@ options =
 --    , Option "N" ["num-matches-ion"]
 --        (ReqArg (\v cp -> return cp { numMatchesIon = read v}) "INT")
 --        "Number of matching ion peak descriptions to show"
-
---    , Option "" ["cpu"]
---        (NoArg (\cp -> return cp { useCPU = True }))
---        "Use CPU backend"
 --
     , Option "" ["max-modable-acids"]
         (ReqArg (\v cp -> return cp { maxModableAcids = read v }) "INT")
@@ -340,6 +338,14 @@ options =
     , Option "" ["mod_[A..Z]"]
         (ReqArg (\_ cp -> return cp) "FLOAT")
         "Variable modification mass to occurences of a residue"
+
+--    , Option "" ["cpu"]
+--        (NoArg (\cp -> return cp { useCPU = True }))
+--        "Use CPU backend"
+--
+    , Option "" ["split-database"]
+        (ReqArg (\v cp -> return cp { splitDB = read v }) "INT")
+        "Number of sections to split the database into"
 
     , Option "v" ["verbose"]
         (NoArg (\cp -> return cp { verbose = True }))

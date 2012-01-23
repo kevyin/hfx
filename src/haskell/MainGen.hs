@@ -15,6 +15,7 @@ import Sequence.Index
 import Sequence.Fragment
 
 import Data.Maybe
+import Control.Monad
 import System.IO
 import System.Environment
 import qualified Data.Vector.Generic as G
@@ -26,7 +27,7 @@ main = do
   (cp,f) <- sequestConfig args
   let fp =  fromMaybe (error "Protein database not specified") (databasePath cp)
 
-  db <- makeSeqDB cp fp
+  db <- head `liftM` makeSeqDB cp fp (splitDB cp)
   if null f
      then writeIndex stdout cp db
      else withFile (head f) WriteMode (\h -> writeIndex h cp db)

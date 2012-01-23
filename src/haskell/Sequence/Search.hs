@@ -304,11 +304,9 @@ scoreModCandidates cp ddb hmi dmi mcands chrg len expr =
   -- predict memory needed and split work accordingly
   let ratio = (fromIntegral totalReqMem) / (fromIntegral freeMem)
       split = (if ratio < 1 then 1 else 1 + ceiling ratio)  -- +1 to stay well within limit
-      most = ceiling $ (fromIntegral num_mpep) / (fromIntegral split) -- most number to score at once
-      sections = map k [1..split] -- (start pos, number to score)
-        where
-          k n = let next = n*most in 
-                (next - most, if next < num_mpep then most else most - (next - num_mpep))
+      sections = sectionsOfSplit num_mpep split
+      --most = snd $ maximumBy (\(_,n) (_,n') -> compare n n') sections
+      most = ceiling $ (fromIntegral num_mpep) / (fromIntegral split) -- most number in a section
   in
 
   CUDA.allocaArray (len*most) $ \d_mspecThry -> 

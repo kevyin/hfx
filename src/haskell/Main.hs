@@ -62,63 +62,74 @@ main = do
                                  ++ "compute v" ++ shows (CUDA.computeCapability props) ", "
                                  ++ "global memory: " ++ showFFloatSIBase 1024 (fromIntegral $ CUDA.totalGlobalMem props :: Double) "B, "
                                  ++ "core clock: "    ++ showFFloatSI (fromIntegral $ 1000 * CUDA.clockRate props :: Double) "Hz"
+    when (verbose cp) $ do
+      hPutStrLn stderr $ "Database: " ++ fp
 
   --
   -- Load the proteins from file, marshal to the device, and then get to work!
   --
   when (verbose cp) $ hPutStrLn stderr ("Loading Database ...\n" )
-  (cp',db) <- loadDatabase cp fp
-  hmi <- makeModInfo cp' db
+  (cp',dbs) <- loadDatabase cp fp (splitDB cp)
   when (verbose cp) $ hPutStrLn stderr ("Searching ...\n" )
-  withDevModInfo hmi $ \dmi ->
-    withDeviceDB cp' db $ forM_ dta . search cp' db hmi dmi
+  allMatches' <- forM dbs $ \db -> do
+    hmi <- makeModInfo cp' db
+    withDevModInfo hmi $ \dmi -> do
+      withDeviceDB cp' db $ \ddb -> forM dta $ \f -> do
+          search cp' db hmi dmi ddb f
+          
+
+  let sortXC = sortBy (\(_,_,a) (_,_,b) -> compare (scoreXC b) (scoreXC a))
+      matchesRaw = concat $ concat $ concat allMatches'
+      matchesByScan = map sortXC $ groupBy (\(_,ms,_) (_,ms',_) -> ms == ms') matchesRaw
+      matchesByFile = map sortXC $ groupBy (\(f,_,_) (f',_,_) -> f == f') matchesRaw
+      n = maximum $ [(numMatches cp'), (numMatchesDetail cp'), (numMatchesIon cp')]
+      allMatchesN = take n $! sortXC $ matchesRaw
+
+  --when (showMatchesPerScan cp) $ printScanResults cp' f matchesByScan
+  --when (showMatchesPerSpecFile cp) $ printSpecfileResults cp' f matchesByFile
+
+  printAllResults cp' allMatchesN
+    
 
 
 {-# INLINE loadDatabase #-}
-loadDatabase :: ConfigParams -> FilePath -> IO (ConfigParams, SequenceDB)
-loadDatabase cp fp = do
-  (cp',db) <- case takeExtensions fp of
-    ext | ".fasta" `isPrefixOf` ext -> (cp,) `liftM` makeSeqDB cp fp
-    ext | ".index" `isPrefixOf` ext -> readIndex cp fp
+loadDatabase :: ConfigParams -> FilePath -> Int -> IO (ConfigParams, [SequenceDB])
+loadDatabase cp fp split = do
+  (cp',dbs) <- case takeExtensions fp of
+    ext | ".fasta" `isPrefixOf` ext -> (cp,) `liftM` makeSeqDB cp fp split
+    ext | ".index" `isPrefixOf` ext -> readIndex cp fp >>= \(cp',sdb) -> return (cp',[sdb]) 
     _                               -> error ("Unsupported database type: " ++ show fp)
-
-  when (verbose cp) $ do
-    hPutStrLn stderr $ "Database: " ++ fp
-    hPutStrLn stderr $ " # amino acids: " ++ (show . G.length . dbIon    $ db)
-    hPutStrLn stderr $ " # proteins:    " ++ (show . G.length . dbHeader $ db)
-    hPutStrLn stderr $ " # peptides:    " ++ (show . G.length . dbFrag   $ db)
-
-  return (cp',db)
+  return (cp',dbs)
 
 
 --
 -- Search the protein database for a match to the experimental spectra
 --
-search :: ConfigParams -> SequenceDB -> HostModInfo -> DeviceModInfo ->  DeviceSeqDB -> FilePath -> IO ()
+search :: ConfigParams -> SequenceDB -> HostModInfo -> DeviceModInfo ->  DeviceSeqDB -> FilePath -> IO [[(FilePath,MS2Data,Match)]]
 search cp db hmi dmi dev fp =
   readMS2Data fp >>= \r -> case r of
-    Left  s -> hPutStrLn stderr s
+    Left  s -> hPutStrLn stderr s >>= \_ -> return []
     Right d -> do 
+      when (verbose cp) $ do
+        --hPutStrLn stderr $ "Database: " ++ fp
+        hPutStrLn stderr $ " # amino acids: " ++ (show . G.length . dbIon    $ db)
+        hPutStrLn stderr $ " # proteins:    " ++ (show . G.length . dbHeader $ db)
+        hPutStrLn stderr $ " # peptides:    " ++ (show . G.length . dbFrag   $ db)
+
       (t,allMatches) <- bracketTime $ forM d $ \ms2 -> do
         matches <- searchForMatches cp db dev hmi dmi ms2
-        when (showMatchesPerScan cp) $ do
-            printConfig cp fp ms2
-            printResults           $! take (numMatches cp)       matches
-            printResultsDetail     $! take (numMatchesDetail cp) matches
-            --printIonMatchDetail cp $! take (numMatchesIon cp)    matches
-        return $ map (\m -> (ms2, m)) matches
+        return $ map (\m -> (fp, ms2, m)) matches
         `catch`
         \(e :: SomeException) -> do 
                 hPutStrLn stderr $ unlines [ "scan:   " ++ (show $ ms2info ms2), "reason: " ++ show e ]
                 return []
 
       when (verbose cp) $ hPutStrLn stderr ("Elapsed time: " ++ showTime t)
+      return allMatches
 
-      let n = maximum $ [(numMatches cp), (numMatchesDetail cp), (numMatchesIon cp)]
-          toPrint = take n $! sortBy (\(_,a) (_,b) -> compare (scoreXC b) (scoreXC a)) $ concat allMatches
-      printAllResults cp toPrint
       `catch`
-      \(e :: SomeException) -> hPutStrLn stderr $ unlines
+      \(e :: SomeException) -> do 
+          hPutStrLn stderr $ unlines
               [ "file:   " ++ fp
               , "reason: " ++ show e ]
-
+          return []
