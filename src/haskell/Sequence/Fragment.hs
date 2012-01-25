@@ -91,7 +91,7 @@ modifyFragment pm unrank (Fragment fmass fheader fdata') = Fragment newMass fhea
                        else x : modData (i+1) xs
     modData _ _      = []
 
-    modInfo = snd $ mapAccumL (\u_idx (ma,cnt,_) -> (u_idx + cnt, (ma, cnt, sublist u_idx (u_idx+cnt) unrank))) 0 pm
+    modInfo = snd $ mapAccumL (\u_idx (ma,cnt,_) -> (u_idx + cnt, (ma, cnt, sublist u_idx cnt unrank))) 0 pm
 
     modified = findModified modInfo :: [Int]
 

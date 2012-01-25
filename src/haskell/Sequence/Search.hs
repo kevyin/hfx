@@ -30,7 +30,7 @@ import Sequence.Match
 import Sequence.Fragment
 import Sequence.Location
 import Sequence.IonSeries
-import Util.Misc
+import Util.Misc           hiding(sublist)
 import Util.C2HS
 import Util.Time
 import Util.Show
@@ -118,14 +118,14 @@ searchWithMods cp sdb ddb hmi dmi ms2 =
   --          find beg and end for each modcomb
   --          calc num_pep for each modcomb
   --          calc above scanned
-  filterCandidatesByModability cp ddb dmi candsByModMass $ \candsByMassAndMod ->
+  filterCandidatesByModability cp ddb dmi candsByModMass $ \candsByMassAndMod -> 
   --    by modability
   --          alloc mem 
   --          calc pep_ma_count
   --               pep_idx
   --               pep_mod_idx
   --          filter pep_cand_idx
-  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->
+  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands -> 
   -- generate modified candidates
   --          calc num_mpep for filtered cands
   --          calc ma_ncomb

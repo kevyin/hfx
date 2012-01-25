@@ -69,15 +69,19 @@ main = do
   -- Load the proteins from file, marshal to the device, and then get to work!
   --
   when (verbose cp) $ hPutStrLn stderr ("Loading Database ...\n" )
-  (cp',dbs) <- loadDatabase cp fp (splitDB cp)
+  --(cp',dbs) <- loadDatabase cp fp (splitDB cp)
+  (t,(cp',dbs)) <- bracketTime $ loadDatabase cp fp (splitDB cp)
+  when (verbose cp) $ hPutStrLn stderr ("Elapsed time: " ++ showTime t)
+
   when (verbose cp) $ hPutStrLn stderr ("Searching ...\n" )
-  allMatches' <- forM dbs $ \db -> do
+  (t2,allMatches') <- bracketTime $ forM dbs $ \db -> do
     hmi <- makeModInfo cp' db
     withDevModInfo hmi $ \dmi -> do
       withDeviceDB cp' db $ \ddb -> forM dta $ \f -> do
         matches <- search cp' db hmi dmi ddb f
         when (showMatchesPerScan cp) $ printScanResults cp' f matches
         return matches
+  when (verbose cp) $ hPutStrLn stderr ("Elapsed time: " ++ showTime t2)
           
 
   let sortXC = sortBy (\(_,_,a) (_,_,b) -> compare (scoreXC b) (scoreXC a))

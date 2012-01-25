@@ -37,6 +37,8 @@ import Text.PrettyPrint
 import qualified Text.PrettyPrint.Boxes     as B
 import qualified Data.ByteString.Lazy.Char8 as L
 
+import Debug.Trace
+
 class Pretty a where ppr :: a -> Doc
 
 instance Pretty Bool            where ppr = text . show
@@ -167,7 +169,7 @@ printAllResults cp mm =  displayIO . ppAsRows 1 . (++) titleAll . snd . mapAccum
     --printResults $! [match]
 
 printResults   :: MatchCollection -> IO ()
-printResults m =  displayIO . ppAsRows 1 . (++) title . snd . mapAccumL k 1 $ m
+printResults m = traceShow ("print results") $ displayIO . ppAsRows 1 . (++) title . snd . mapAccumL k 1 $ m
     where
         s0    = scoreXC (head m)
         k n z = (n+1, toDoc n s0 z)
