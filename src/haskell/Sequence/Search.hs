@@ -93,7 +93,6 @@ searchForMatches cp sdb ddb hmi dmi ms2 = do
 
 --
 -- |Search without modifications
--- @TODO, incorporate into with mods ?
 --
 searchWithoutMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
 searchWithoutMods cp sdb ddb ms2 =
@@ -144,7 +143,6 @@ filterCandidateByMass cp db mass action =
 --
 -- |For each modification and it's mass delta, find suitable peptides
 -- Do this by finding begin and end indices to a list of peptides sorted by residual mass
--- @TODO sort r_sorted via CUDA
 --
 filterCandidateByModMass :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> Float -> (CandidatesByModMass -> IO b) -> IO b
 filterCandidateByModMass cp ddb dmi mass action =

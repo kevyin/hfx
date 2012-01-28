@@ -20,6 +20,8 @@ import Mass
 import Config
 import Util.Misc
 import Sequence.Fasta
+import Util.Time
+import Util.Show
 
 import Prelude                                  hiding ( lookup )
 import Data.List                                ( unfoldr, mapAccumL, findIndices )
@@ -43,6 +45,7 @@ import qualified Data.Vector.Fusion.Stream.Size as S
 
 import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
+import qualified Foreign.CUDA.Algorithms        as CUDA (sort_val)
 
 import Debug.Trace
 
@@ -139,8 +142,7 @@ data HostModInfo =
     -- num_ma, ma, ma_mass (mass change)
     modAcids         :: (Int, U.Vector Char, U.Vector Float), 
     -- num_mod, mod_ma_count (size: num_ma X num_mod), mod_ma_count_sum, mod_delta)
-    modCombs         :: (Int, U.Vector Int, U.Vector Int, U.Vector Float), 
-    resIdxSort       :: U.Vector Int
+    modCombs         :: (Int, U.Vector Int, U.Vector Int, U.Vector Float)
   }
   deriving Show
 
@@ -239,16 +241,10 @@ withDeviceDB cp sdb action =
     CUDA.withVector ions $ \d_ions ->
       action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n))
 
-makeModInfo :: ConfigParams -> SequenceDB -> IO HostModInfo
+makeModInfo :: ConfigParams -> HostModInfo
 {-# INLINE makeModInfo #-}
-makeModInfo cp sdb = if (num_ma < 1) then return NoHMod
-  else do
-    let (r,_,_) = G.unzip3 (dbFrag sdb)
-    pep_idx <- U.unsafeThaw $ U.enumFromN 0 (G.length r) 
-    VA.sortBy (\i j -> compare (r G.! i) (r G.! j)) pep_idx
-    pep_idx_r_sorted <- U.unsafeFreeze pep_idx
-
-    return $ HostModInfo (num_ma, ma, ma_mass) (num_mod, mod_ma_count, mod_ma_count_sum, mod_delta) pep_idx_r_sorted
+makeModInfo cp = if (num_ma < 1) then NoHMod
+  else HostModInfo (num_ma, ma, ma_mass) (num_mod, mod_ma_count, mod_ma_count_sum, mod_delta) 
       where
         max_ma  = maxModableAcids cp
         ma      = U.fromList $ getMA cp
@@ -277,12 +273,12 @@ makeModInfo cp sdb = if (num_ma < 1) then return NoHMod
             where
             (x,_:ys) = splitAt idx list
 
-withDevModInfo :: HostModInfo -> (DeviceModInfo -> IO a) -> IO a
+withDevModInfo :: DeviceSeqDB -> HostModInfo -> (DeviceModInfo -> IO a) -> IO a
 {-# INLINE withDevModInfo #-}
-withDevModInfo hmi action = 
+withDevModInfo ddb hmi action = 
     let (num_ma, ma, ma_mass) = modAcids hmi
         (num_mod, mod_ma_count, mod_ma_count_sum, mod_delta) = modCombs hmi
-        pep_idx_r_sorted = resIdxSort hmi
+        pep_idx_r_sorted = U.enumFromN 0 (numFragments ddb) 
     in case hmi of
       NoHMod    -> action NoDMod
       _         -> 
@@ -291,8 +287,8 @@ withDevModInfo hmi action =
         CUDA.withVector mod_delta        $ \d_mod_delta ->
         CUDA.withVector (U.map fromIntegral mod_ma_count)     $ \d_mod_ma_count ->
         CUDA.withVector (U.map fromIntegral mod_ma_count_sum) $ \d_mod_ma_count_sum -> 
-        CUDA.withVector (U.map fromIntegral pep_idx_r_sorted) $ \d_r_sorted -> 
-
+        CUDA.withVector pep_idx_r_sorted $ \d_r_sorted -> do
+          (t,_) <- bracketTime $ CUDA.sort_val (devResiduals ddb) d_r_sorted (numFragments ddb)
           action (DevModInfo (num_ma, d_ma, d_ma_mass) (num_mod, d_mod_ma_count, d_mod_ma_count_sum, d_mod_delta) d_r_sorted)
     
 --------------------------------------------------------------------------------

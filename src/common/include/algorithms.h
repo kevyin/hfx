@@ -35,6 +35,11 @@ void prescanr_plusui(const uint32_t *d_in, uint32_t *d_out, const uint32_t N);
  */
 void sort_rf(float *d_keys, uint32_t *d_vals, uint32_t N);
 
+/*
+ * key-value sort (in-place)
+ */
+void sort_val_f(float *d_keys, uint32_t *d_vals, uint32_t N);
+
 #if 0
 /*
  * Permute (32-bit payload)

@@ -76,4 +76,13 @@ Executable generate-peptides
                        vector-binary-instances  >= 0.1 && < 0.2
 
   ghc-options:         -Wall -O2 -fno-spec-constr
+  extra-libraries:     stdc++
+  extra-lib-dirs:      dist/lib
+
+  include-dirs:        src/common/include
+
+  if flag(debug)
+    extra-libraries:   filterD ion_seriesD mvmD sortD gen_mod_pepD
+  else
+    extra-libraries:   filter  ion_series  mvm  sort gen_mod_pep
 

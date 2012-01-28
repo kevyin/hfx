@@ -74,10 +74,10 @@ main = do
   when (verbose cp) $ hPutStrLn stderr ("Load Database Elapsed time: " ++ showTime t)
 
   when (verbose cp) $ hPutStrLn stderr ("Searching ...\n" )
+  let hmi = makeModInfo cp'
   (t2,allMatches') <- bracketTime $ forM dbs $ \db -> do
-    hmi <- makeModInfo cp' db
-    withDevModInfo hmi $ \dmi -> do
-      withDeviceDB cp' db $ \ddb -> forM dta $ \f -> do
+    withDeviceDB cp' db $ \ddb -> 
+      withDevModInfo ddb hmi $ \dmi -> forM dta $ \f -> do
         matches <- search cp' db hmi dmi ddb f
         when (showMatchesPerScan cp) $ printScanResults cp' f matches
         return matches
