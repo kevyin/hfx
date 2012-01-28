@@ -71,7 +71,7 @@ main = do
   when (verbose cp) $ hPutStrLn stderr ("Loading Database ...\n" )
   --(cp',dbs) <- loadDatabase cp fp (splitDB cp)
   (t,(cp',dbs)) <- bracketTime $ loadDatabase cp fp (splitDB cp)
-  when (verbose cp) $ hPutStrLn stderr ("Elapsed time: " ++ showTime t)
+  when (verbose cp) $ hPutStrLn stderr ("Load Database Elapsed time: " ++ showTime t)
 
   when (verbose cp) $ hPutStrLn stderr ("Searching ...\n" )
   (t2,allMatches') <- bracketTime $ forM dbs $ \db -> do
@@ -81,7 +81,7 @@ main = do
         matches <- search cp' db hmi dmi ddb f
         when (showMatchesPerScan cp) $ printScanResults cp' f matches
         return matches
-  when (verbose cp) $ hPutStrLn stderr ("Elapsed time: " ++ showTime t2)
+  when (verbose cp) $ hPutStrLn stderr ("Search Elapsed time: " ++ showTime t2)
           
 
   let sortXC = sortBy (\(_,_,a) (_,_,b) -> compare (scoreXC b) (scoreXC a))
@@ -119,7 +119,7 @@ search cp db hmi dmi dev fp =
         hPutStrLn stderr $ " # proteins:    " ++ (show . G.length . dbHeader $ db)
         hPutStrLn stderr $ " # peptides:    " ++ (show . G.length . dbFrag   $ db)
 
-      (t,allMatches) <- bracketTime $ forM d $ \ms2 -> do
+      allMatches <- forM d $ \ms2 -> do
         matches <- searchForMatches cp db dev hmi dmi ms2
         return $ map (\m -> (fp, ms2, m)) matches
         `catch`
@@ -127,7 +127,6 @@ search cp db hmi dmi dev fp =
                 hPutStrLn stderr $ unlines [ "scan:   " ++ (show $ ms2info ms2), "reason: " ++ show e ]
                 return []
 
-      when (verbose cp) $ hPutStrLn stderr ("Elapsed time: " ++ showTime t)
       return allMatches
 
       `catch`
