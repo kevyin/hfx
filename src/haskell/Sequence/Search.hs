@@ -30,7 +30,7 @@ import Sequence.Match
 import Sequence.Fragment
 import Sequence.Location
 import Sequence.IonSeries
-import Util.Misc           hiding(sublist)
+import Util.Misc                                hiding (sublist)
 import Util.C2HS
 import Util.Time
 
@@ -147,19 +147,18 @@ filterCandidateByMass cp db mass action =
 filterCandidateByModMass :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> Float -> (CandidatesByModMass -> IO b) -> IO b
 filterCandidateByModMass cp ddb dmi mass action =
   let (num_mod, _, _, d_mod_delta) = devModCombs dmi 
-      d_pep_idx_r_sorted = devResIdxSort dmi
+      d_pep_idx_r_sorted = devResIdxSort ddb
   in
   CUDA.allocaArray num_mod $ \d_begin ->      -- begin idx to d_pep_idx_r_sorted
   CUDA.allocaArray num_mod $ \d_end ->        -- end idx
   CUDA.allocaArray num_mod $ \d_num_pep ->    -- end[i] - begin[i]
-  CUDA.allocaArray num_mod $ \d_num_pep_scan-> do
-  CUDA.findBeginEnd d_begin d_end d_num_pep d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_pep_total -> do
-  action (d_begin, d_end, num_pep_total, d_num_pep_scan)
+  CUDA.allocaArray num_mod $ \d_num_pep_scan-> 
+  CUDA.findBeginEnd d_begin d_end d_num_pep d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_pep_total -> action (d_begin, d_end, num_pep_total, d_num_pep_scan)
   where
     eps = massTolerance cp
 
 --
--- Search a subset of peptides for peptides which a specific combination of modifications 
+-- |Search a subset of peptides for peptides which a specific combination of modifications 
 -- can be applied.
 -- Peptides are deemed modifable if it has enough amino acids.
 --
@@ -171,7 +170,7 @@ filterCandidatesByModability :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> 
 filterCandidatesByModability cp ddb dmi (d_begin, d_end, num_pep_total, d_num_pep_scan) action =
   let (num_ma, d_ma, _)                 = devModAcids dmi 
       (num_mod, d_mod_ma_count, _, _)   = devModCombs dmi 
-      d_pep_idx_r_sorted                = devResIdxSort dmi
+      d_pep_idx_r_sorted                = devResIdxSort ddb
   in
   CUDA.allocaArray num_pep_total $ \d_pep_valid_idx->   -- modable peptide indices to be returned here
   CUDA.allocaArray num_pep_total $ \d_pep_idx ->        -- idx of peptide to tc tn
@@ -354,7 +353,7 @@ sequestXCMod cp hmi (_, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpe
     score             <- CUDA.peekListArray n d_score
     mpep_idx'         <- CUDA.peekListArray n d_mpep_idx
     mpep_pep_idx'     <- CUDA.peekListArray num_mpep (d_mpep_pep_idx `CUDA.advanceDevPtr` start)
-    mpep_pep_mod_idx' <- CUDA.peekListArray num_mpep (d_mpep_pep_mod_idx  `CUDA.advanceDevPtr` start)
+    mpep_pep_mod_idx' <- CUDA.peekListArray num_mpep (d_mpep_pep_mod_idx `CUDA.advanceDevPtr` start)
     mpep_unrank'      <- CUDA.peekListArray len_unrank d_mpep_unrank
     mpep_mod_ma_count_sum_scan' <- CUDA.peekListArray num_mpep (d_mpep_mod_ma_count_sum_scan `CUDA.advanceDevPtr` start)
 

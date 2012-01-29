@@ -61,6 +61,9 @@ type PepMod = [(Char, Int, Float)]
 -- Sequence Fragments
 --------------------------------------------------------------------------------
 
+--
+-- |Fragment
+--
 data Fragment = Fragment
   {
     fragmass   :: Float,                -- Total mass of this fragment
@@ -70,17 +73,14 @@ data Fragment = Fragment
   deriving (Eq, Show)
 
 --
--- Fragment label (first word of full header)
+-- |Fragment label (first word of full header)
 --
 fraglabel :: Fragment -> L.ByteString
 fraglabel = head . LC.words . fragheader
 
 --
--- fragdata modified 
+-- |Modify fragment with a modification
 --
---modFragData :: PepMod -> [Int] -> L.ByteString -> L.ByteString
---modFragData p u fd =
-
 modifyFragment :: PepMod -> [Int] -> Fragment -> Fragment
 modifyFragment pm unrank (Fragment fmass fheader fdata') = Fragment newMass fheader newData 
   where
@@ -105,12 +105,48 @@ modifyFragment pm unrank (Fragment fmass fheader fdata') = Fragment newMass fhea
         occurences = filter (\i -> 1 < i && i < ((length fdata) - 2)) $ findIndices ((==) ma) fdata -- filter out flanking acids
     findModified _ = []
 
+
+--------------------------------------------------------------------------------
+-- Modification Information
+--------------------------------------------------------------------------------
+--
+-- |Peptide modification information
+-- Contains the modable acids and combinations
+-- mod_ma_count is a 2D array. Each row is a modification described by a count of each modable acid.
+-- mod_ma_count_sum is a 1D array of the sum of the counts
+-- mod_delta is the change in mass a modification would apply.
+--
+data HostModInfo = 
+    NoHMod
+  | HostModInfo
+  {
+    -- num_ma, ma, ma_mass (mass change)
+    modAcids    :: (Int, U.Vector Char, U.Vector Float), 
+    -- num_mod, mod_ma_count (size: num_ma X num_mod), mod_ma_count_sum, mod_delta)
+    modCombs    :: (Int, U.Vector Int, U.Vector Int, U.Vector Float)
+  }
+  deriving Show
+
+-- 
+-- |Modification information on the device
+--
+data DeviceModInfo = 
+    NoDMod
+  | DevModInfo
+  {
+    -- num_ma, d_ma, d_ma_mass (mass change)
+    devModAcids :: (Int, CUDA.DevicePtr Word8, CUDA.DevicePtr Float), 
+    -- num_mod, d_mod_ma_count (size: num_ma X num_mod), d_mod_ma_count_sum, d_mod_delta)
+    devModCombs :: (Int, CUDA.DevicePtr Word32, CUDA.DevicePtr Word32, CUDA.DevicePtr Float)
+  }
+  deriving Show
+
 --------------------------------------------------------------------------------
 -- Sequence Database
 --------------------------------------------------------------------------------
 
 --
--- A collection of protein sequences
+-- |A collection of protein sequences
 --
 data SequenceDB = SeqDB
   {
@@ -123,7 +159,7 @@ data SequenceDB = SeqDB
   deriving Show
 
 --
--- Binary instance of the digested sequence database, for serialising to disk
+-- |Binary instance of the digested sequence database, for serialising to disk
 -- and (hopefully) fast retrieval for later reuse.
 --
 instance Binary SequenceDB where
@@ -135,31 +171,8 @@ instance Binary SequenceDB where
   {-# INLINE get #-}
   get = liftM5 SeqDB get get get (liftM3 G.zip3 get get get) get
 
-data HostModInfo = 
-    NoHMod
-  | HostModInfo
-  {
-    -- num_ma, ma, ma_mass (mass change)
-    modAcids         :: (Int, U.Vector Char, U.Vector Float), 
-    -- num_mod, mod_ma_count (size: num_ma X num_mod), mod_ma_count_sum, mod_delta)
-    modCombs         :: (Int, U.Vector Int, U.Vector Int, U.Vector Float)
-  }
-  deriving Show
-
-data DeviceModInfo = 
-    NoDMod
-  | DevModInfo
-  {
-    -- num_ma, d_ma, d_ma_mass (mass change)
-    devModAcids         :: (Int, CUDA.DevicePtr Word8, CUDA.DevicePtr Float), 
-    -- num_mod, d_mod_ma_count (size: num_ma X num_mod), d_mod_ma_count_sum, d_mod_delta)
-    devModCombs         :: (Int, CUDA.DevicePtr Word32, CUDA.DevicePtr Word32, CUDA.DevicePtr Float), 
-    devResIdxSort       :: CUDA.DevicePtr Word32
-  }
-  deriving Show
-
 --
--- An extension of the above referencing memory actually stored on the graphics
+-- |An extension of the above referencing memory actually stored on the graphics
 -- device. Meant to be used in tandem.
 --
 data DeviceSeqDB = DevDB
@@ -169,7 +182,8 @@ data DeviceSeqDB = DevDB
     devIons             :: CUDA.DevicePtr Word8,
     devMassTable        :: CUDA.DevicePtr Float,
     devResiduals        :: CUDA.DevicePtr Float,
-    devTerminals        :: (CUDA.DevicePtr Word32, CUDA.DevicePtr Word32)
+    devTerminals        :: (CUDA.DevicePtr Word32, CUDA.DevicePtr Word32),
+    devResIdxSort       :: CUDA.DevicePtr Word32
   }
   deriving Show
 
@@ -233,13 +247,16 @@ withDeviceDB cp sdb action =
       ions    = dbIon sdb
       numIon  = G.length (dbIon  sdb)
       numFrag = G.length (dbFrag sdb)
+      pep_idx_r_sorted = U.enumFromN 0 numFrag
   in
-    CUDA.withVector r    $ \d_r    ->
-    CUDA.withVector c    $ \d_c    ->
-    CUDA.withVector n    $ \d_n    ->
-    CUDA.withVector mt   $ \d_mt   ->
-    CUDA.withVector ions $ \d_ions ->
-      action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n))
+      CUDA.withVector r    $ \d_r    ->
+      CUDA.withVector c    $ \d_c    ->
+      CUDA.withVector n    $ \d_n    ->
+      CUDA.withVector mt   $ \d_mt   ->
+      CUDA.withVector ions $ \d_ions ->
+      CUDA.withVector pep_idx_r_sorted $ \d_r_sorted -> do
+          CUDA.sort_val d_r d_r_sorted numFrag
+          action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n) d_r_sorted)
 
 makeModInfo :: ConfigParams -> HostModInfo
 {-# INLINE makeModInfo #-}
@@ -260,9 +277,8 @@ makeModInfo cp = if (num_ma < 1) then NoHMod
         ma_count' = tail (addModDimensions ((U.length ma) - 1) [ replicate (U.length ma) 0 ])
 
         addModDimensions :: Int -> [[Int]] -> [[Int]]
-        addModDimensions dim xs = 
-            if dim >= 0 then expand $ addModDimensions (dim-1) xs else xs
-            where
+        addModDimensions dim xs = if dim >= 0 then expand $ addModDimensions (dim-1) xs else xs
+          where
             expand (c:cs) = [c] ++ 
                             map (\cnt -> replace dim cnt c) [1..max_ma] ++ 
                             expand cs
@@ -270,7 +286,7 @@ makeModInfo cp = if (num_ma < 1) then NoHMod
 
         replace :: (Show a) => Int -> a -> [a] -> [a]
         replace idx val list = x ++ val : ys
-            where
+          where
             (x,_:ys) = splitAt idx list
 
 withDevModInfo :: DeviceSeqDB -> HostModInfo -> (DeviceModInfo -> IO a) -> IO a
@@ -278,7 +294,6 @@ withDevModInfo :: DeviceSeqDB -> HostModInfo -> (DeviceModInfo -> IO a) -> IO a
 withDevModInfo ddb hmi action = 
     let (num_ma, ma, ma_mass) = modAcids hmi
         (num_mod, mod_ma_count, mod_ma_count_sum, mod_delta) = modCombs hmi
-        pep_idx_r_sorted = U.enumFromN 0 (numFragments ddb) 
     in case hmi of
       NoHMod    -> action NoDMod
       _         -> 
@@ -286,10 +301,8 @@ withDevModInfo ddb hmi action =
         CUDA.withVector ma_mass          $ \d_ma_mass   ->
         CUDA.withVector mod_delta        $ \d_mod_delta ->
         CUDA.withVector (U.map fromIntegral mod_ma_count)     $ \d_mod_ma_count ->
-        CUDA.withVector (U.map fromIntegral mod_ma_count_sum) $ \d_mod_ma_count_sum -> 
-        CUDA.withVector pep_idx_r_sorted $ \d_r_sorted -> do
-          (t,_) <- bracketTime $ CUDA.sort_val (devResiduals ddb) d_r_sorted (numFragments ddb)
-          action (DevModInfo (num_ma, d_ma, d_ma_mass) (num_mod, d_mod_ma_count, d_mod_ma_count_sum, d_mod_delta) d_r_sorted)
+        CUDA.withVector (U.map fromIntegral mod_ma_count_sum) $ \d_mod_ma_count_sum ->
+          action $ DevModInfo (num_ma, d_ma, d_ma_mass) (num_mod, d_mod_ma_count, d_mod_ma_count_sum, d_mod_delta)
     
 --------------------------------------------------------------------------------
 -- Digestion

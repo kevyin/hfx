@@ -155,6 +155,13 @@ ifeq ($(emu),1)
     CFLAGS      += -D__DEVICE_EMULATION__
 endif
 
+# Device benchmark configuration
+ifeq ($(bench),1)
+    NVCCFLAGS   += -D_BENCH
+    CXXFLAGS    += -D_BENCH
+    CFLAGS      += -D_BENCH
+endif
+
 # architecture flag for cubin build
 CUBIN_ARCH_FLAG :=
 

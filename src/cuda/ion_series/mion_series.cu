@@ -16,6 +16,8 @@
 #include "algorithms.h"
 
 #include <stdint.h>
+#include <time.h>
+#include <stdio.h>
 
 //#define DEBUG
 
@@ -444,6 +446,12 @@ void addModIons
     const uint32_t      nsearch
 )
 {
+
+#ifdef _BENCH
+    time_t t_beg, t_end;
+    time(&t_beg);
+#endif 
+
     const uint32_t *d_mpep_pep_idx = start + _d_mpep_pep_idx;
     const uint32_t *d_mpep_pep_mod_idx = start + _d_mpep_pep_mod_idx;
     const uint32_t *d_mpep_mod_ma_count_sum_scan = start + _d_mpep_mod_ma_count_sum_scan;
@@ -518,8 +526,12 @@ void addModIons
     } else {
         std::cout << "spectrum seems ok" << std:: endl;
     }
-    std::cout << "510" << std::endl;
 #endif
+
+#ifdef _BENCH
+    time(&t_end);
+    printf ("Time elapsed for addModIons: %.2lf seconds\n", difftime(t_end,t_beg));
+#endif 
 
 }
 

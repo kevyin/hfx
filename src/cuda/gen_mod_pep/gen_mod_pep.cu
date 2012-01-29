@@ -250,6 +250,11 @@ genModCands
     const uint32_t  num_ma
 )
 {
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time_t t_beg, t_end;
+    time(&t_beg);
+#endif 
     //std::cout << "gen_mod_pep" << std::endl;
     //printGPUMemoryUsage();
 
@@ -301,13 +306,12 @@ genModCands
     default:
         assert(!"Maximum number of variable acids is 10");
     }
-/*
-    thrust::device_ptr<const uint32_t> d_unrank_th(d_out_mpep_unrank);
-    //for (uint32_t i = 0; i < 2485; i++) {
-    for (uint32_t i = 0; i < num_mpep; i++) {
-        std::cout << " unrank " << i << " " << d_unrank_th[i] ; 
-    }
-    */
+
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time(&t_end);
+    printf ("Time elapsed for genMod: %.2lf seconds\n", difftime(t_end,t_beg));
+#endif 
 
 }
 

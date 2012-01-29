@@ -17,6 +17,9 @@
 #include <thrust/device_vector.h>
 #include <thrust/scan.h>
 
+#include <time.h>
+#include <stdio.h>
+
 /*
  * Scan a warp-sized chunk of data. Because warps execute instructions in SIMD
  * fashion, there is no need to synchronise in order to share data. The most
@@ -145,7 +148,7 @@ findModablePeptides_core
     }
 }
 
-/*
+/**
  * Select a number of threads and blocks. Each block will have at least one full
  * warp, as required by the core kernel
  */
@@ -198,152 +201,152 @@ struct fillMatrixRow: public thrust::unary_function<uint32_t,T>
     }
 };
 
-#ifdef _DEBUG
+//#ifdef _DEBUG
 
 /**
  * filterByModNonParallel
  */
-void
-filterByModNonParallel 
-(
-    thrust::host_vector<uint32_t>& h_check_valid,
-    thrust::host_vector<uint32_t>& h_check_pep_ma_count,
+//void
+//filterByModNonParallel 
+//(
+    //thrust::host_vector<uint32_t>& h_check_valid,
+    //thrust::host_vector<uint32_t>& h_check_pep_ma_count,
 
-    thrust::device_ptr<const uint8_t>&  d_ions_th,
-    thrust::device_ptr<const uint32_t>& d_tc_th,
-    thrust::device_ptr<const uint32_t>& d_tn_th,
+    //thrust::device_ptr<const uint8_t>&  d_ions_th,
+    //thrust::device_ptr<const uint32_t>& d_tc_th,
+    //thrust::device_ptr<const uint32_t>& d_tn_th,
 
-    thrust::device_ptr<const uint32_t>& d_sub_idx_th,
-    const uint32_t&                     sub_idx_length,
+    //thrust::device_ptr<const uint32_t>& d_sub_idx_th,
+    //const uint32_t&                     sub_idx_length,
 
-    thrust::device_ptr<const uint8_t>&  d_ma_th,
-    thrust::device_ptr<const uint8_t>&  d_ma_count_th,
-    const uint32_t&                     ma_length
-)
-{
+    //thrust::device_ptr<const uint8_t>&  d_ma_th,
+    //thrust::device_ptr<const uint8_t>&  d_ma_count_th,
+    //const uint32_t&                     ma_length
+//)
+//{
 
-    for (uint32_t p = 0; p < sub_idx_length; ++p) {
-        thrust::host_vector<uint32_t> ma_counts(ma_length);
-        uint32_t p_idx = d_sub_idx_th[p];
+    //for (uint32_t p = 0; p < sub_idx_length; ++p) {
+        //thrust::host_vector<uint32_t> ma_counts(ma_length);
+        //uint32_t p_idx = d_sub_idx_th[p];
 
-        // count the ma's in the peptide
-        for (uint32_t a = d_tc_th[p_idx]; a < d_tn_th[p_idx]; ++a) {
-            uint8_t acid = d_ions_th[a];
+        //// count the ma's in the peptide
+        //for (uint32_t a = d_tc_th[p_idx]; a < d_tn_th[p_idx]; ++a) {
+            //uint8_t acid = d_ions_th[a];
 
-            for (uint32_t ma = 0; ma < ma_length; ++ma) {
-                if (d_ma_th[ma] == acid) {
-                    ++ma_counts[ma];
-                    break;
-                }
-            }
-        }
+            //for (uint32_t ma = 0; ma < ma_length; ++ma) {
+                //if (d_ma_th[ma] == acid) {
+                    //++ma_counts[ma];
+                    //break;
+                //}
+            //}
+        //}
 
-        bool modable = true;
-        for (uint32_t ma = 0; ma < ma_length && modable; ++ma) {
-            if (ma_counts[ma] < d_ma_count_th[ma]) {
-                modable = false;
-            }
-        }
+        //bool modable = true;
+        //for (uint32_t ma = 0; ma < ma_length && modable; ++ma) {
+            //if (ma_counts[ma] < d_ma_count_th[ma]) {
+                //modable = false;
+            //}
+        //}
 
-        if (modable) {
-            h_check_valid.push_back(p_idx);    
-            h_check_pep_ma_count.insert(h_check_pep_ma_count.end(), ma_counts.begin(), ma_counts.end());
-        }
-    }
-}
+        //if (modable) {
+            //h_check_valid.push_back(p_idx);    
+            //h_check_pep_ma_count.insert(h_check_pep_ma_count.end(), ma_counts.begin(), ma_counts.end());
+        //}
+    //}
+//}
 
 /**
  * checkFindModablePeptides
  * check the function by comparing with serial methods
  * @TODO
  */
-bool
-checkFindModablePeptides
-(
-    const uint8_t                   *d_ions,
-    const uint32_t                  *d_tc,
-    const uint32_t                  *d_tn,
+//bool
+//checkFindModablePeptides
+//(
+    //const uint8_t                   *d_ions,
+    //const uint32_t                  *d_tc,
+    //const uint32_t                  *d_tn,
 
-    const uint32_t                  *d_sub_idx,
-    const uint32_t                  sub_idx_length,
+    //const uint32_t                  *d_sub_idx,
+    //const uint32_t                  sub_idx_length,
 
-    const uint8_t                   *d_ma,
-    const uint8_t                   *d_ma_count,
-    const uint32_t                  ma_length,
+    //const uint8_t                   *d_ma,
+    //const uint8_t                   *d_ma_count,
+    //const uint32_t                  ma_length,
 
-    const uint32_t                  out_numValid,
-    thrust::device_ptr<uint32_t>    d_out_valid,
-    thrust::device_ptr<uint32_t>    d_out_pep_ma_count
+    //const uint32_t                  out_numValid,
+    //thrust::device_ptr<uint32_t>    d_out_valid,
+    //thrust::device_ptr<uint32_t>    d_out_pep_ma_count
 
-)
-{
-    std::cout << "checking filter by mod" << std::endl;
+//)
+//{
+    //std::cout << "checking filter by mod" << std::endl;
     
-    // initialize thrust device pointers
-    thrust::device_ptr<const uint8_t>   d_ions_th(d_ions);
-    thrust::device_ptr<const uint32_t>  d_tc_th(d_tc);
-    thrust::device_ptr<const uint32_t>  d_tn_th(d_tn);
+    //// initialize thrust device pointers
+    //thrust::device_ptr<const uint8_t>   d_ions_th(d_ions);
+    //thrust::device_ptr<const uint32_t>  d_tc_th(d_tc);
+    //thrust::device_ptr<const uint32_t>  d_tn_th(d_tn);
 
-    thrust::device_ptr<const uint32_t>  d_sub_idx_th(d_sub_idx);
-    thrust::device_ptr<const uint8_t>   d_ma_th(d_ma);
-    thrust::device_ptr<const uint8_t>   d_ma_count_th(d_ma_count);
+    //thrust::device_ptr<const uint32_t>  d_sub_idx_th(d_sub_idx);
+    //thrust::device_ptr<const uint8_t>   d_ma_th(d_ma);
+    //thrust::device_ptr<const uint8_t>   d_ma_count_th(d_ma_count);
 
-    // output vectors
-    thrust::host_vector<uint32_t> h_check_valid;
-    thrust::host_vector<uint32_t> h_check_pep_ma_count;
+    //// output vectors
+    //thrust::host_vector<uint32_t> h_check_valid;
+    //thrust::host_vector<uint32_t> h_check_pep_ma_count;
 
-    filterByModNonParallel(h_check_valid, h_check_pep_ma_count, 
-                           d_ions_th, d_tc_th, d_tn_th,
-                           d_sub_idx_th, sub_idx_length,
-                           d_ma_th, d_ma_count_th, ma_length);
+    //filterByModNonParallel(h_check_valid, h_check_pep_ma_count, 
+                           //d_ions_th, d_tc_th, d_tn_th,
+                           //d_sub_idx_th, sub_idx_length,
+                           //d_ma_th, d_ma_count_th, ma_length);
 
-    // comparison
-    thrust::device_vector<uint32_t> d_check_valid = h_check_valid;
-    thrust::device_vector<uint32_t> d_check_pep_ma_count = h_check_pep_ma_count;
-    if (h_check_valid.size() != out_numValid) {
-        std::cout << "h_check_valid.size " << h_check_valid.size() << " != " << "out_numValid " << out_numValid << std::endl;
-        exit(1);
-    }
+    //// comparison
+    //thrust::device_vector<uint32_t> d_check_valid = h_check_valid;
+    //thrust::device_vector<uint32_t> d_check_pep_ma_count = h_check_pep_ma_count;
+    //if (h_check_valid.size() != out_numValid) {
+        //std::cout << "h_check_valid.size " << h_check_valid.size() << " != " << "out_numValid " << out_numValid << std::endl;
+        //exit(1);
+    //}
      
-    if (!thrust::equal(d_out_valid, d_out_valid + out_numValid, d_check_valid.begin())) {
-        std::cout << "d_out_valid doesn't seem to be correct" << std::endl;
-        exit(1);
+    //if (!thrust::equal(d_out_valid, d_out_valid + out_numValid, d_check_valid.begin())) {
+        //std::cout << "d_out_valid doesn't seem to be correct" << std::endl;
+        //exit(1);
 
-    }
+    //}
 
-    if (!thrust::equal(d_out_pep_ma_count, d_out_pep_ma_count + out_numValid*ma_length, d_check_pep_ma_count.begin())) {
-        std::cout << "d_out_pep_ma_count doesn't seem to be correct" << std::endl;
-        std::cout << "Printing check_valid and h_check_pep_ma_count" << std::endl;
-        for(int i = 0; i < h_check_valid.size(); i++) {
-            std::cout << "h_check_valid " << h_check_valid[i] << std::endl;
-            for (int j = 0; j < ma_length; j++) {
-                uint32_t check = h_check_pep_ma_count[i*ma_length + j];
-                uint32_t out   = d_out_pep_ma_count[i*ma_length + j];
-                if (check == out) 
-                    std::cout << check << " == " << out << " | ";
-                else
-                    std::cout << check << " != " << out << " OUT ERR" << " | ";               
-                uint32_t idx = h_check_valid[i];
-                printPeptide(idx, d_ions, d_tc, d_tn);
-            }
-            std::cout << std::endl;
-        }
-        exit(1);
-    }
-
-        // print d_out_valid after compaction
-        //std::cout << "Printing out_valid" << std::endl;
-        //for(int i = 0; i < out_numValid; i++) {
-            //std::cout << "d_out_valid " << d_out_valid[i] << std::endl;
+    //if (!thrust::equal(d_out_pep_ma_count, d_out_pep_ma_count + out_numValid*ma_length, d_check_pep_ma_count.begin())) {
+        //std::cout << "d_out_pep_ma_count doesn't seem to be correct" << std::endl;
+        //std::cout << "Printing check_valid and h_check_pep_ma_count" << std::endl;
+        //for(int i = 0; i < h_check_valid.size(); i++) {
+            //std::cout << "h_check_valid " << h_check_valid[i] << std::endl;
             //for (int j = 0; j < ma_length; j++) {
-                //std::cout << d_out_pep_ma_count[i*ma_length + j] << " ";
+                //uint32_t check = h_check_pep_ma_count[i*ma_length + j];
+                //uint32_t out   = d_out_pep_ma_count[i*ma_length + j];
+                //if (check == out) 
+                    //std::cout << check << " == " << out << " | ";
+                //else
+                    //std::cout << check << " != " << out << " OUT ERR" << " | ";               
+                //uint32_t idx = h_check_valid[i];
+                //printPeptide(idx, d_ions, d_tc, d_tn);
             //}
             //std::cout << std::endl;
         //}
-    std::cout << "checking ok" << std::endl;
-    return true;
-}
-#endif
+        //exit(1);
+    //}
+
+        //// print d_out_valid after compaction
+        ////std::cout << "Printing out_valid" << std::endl;
+        ////for(int i = 0; i < out_numValid; i++) {
+            ////std::cout << "d_out_valid " << d_out_valid[i] << std::endl;
+            ////for (int j = 0; j < ma_length; j++) {
+                ////std::cout << d_out_pep_ma_count[i*ma_length + j] << " ";
+            ////}
+            ////std::cout << std::endl;
+        ////}
+    //std::cout << "checking ok" << std::endl;
+    //return true;
+//}
+//#endif
 
 template <uint32_t MaxMA>
 void
@@ -384,18 +387,23 @@ findModablePeptides_dispatch
     }
 }
 
+/**
+ * Binary search for begin position
+ */
 template <typename T>
 struct findBegin : public thrust::unary_function<float,T>
 {
-    thrust::device_ptr<const float> d_r;
-    thrust::device_ptr<const uint32_t> d_pep_idx_r_sorted;
+    //thrust::device_ptr<const float> d_r;
+    const float    *d_r;
+    //thrust::device_ptr<const uint32_t> d_pep_idx_r_sorted;
+    const uint32_t *d_pep_idx_r_sorted;
     const uint32_t num_pep;
     const float    mass;
     const float    eps;
 
     __host__ __device__
-    findBegin(thrust::device_ptr<const float> _r, 
-              thrust::device_ptr<const uint32_t> _r_sorted,
+    findBegin(const float    *_r, 
+              const uint32_t *_r_sorted,
               const uint32_t _n,
               const float    _m,
               const float    _eps) 
@@ -421,18 +429,22 @@ struct findBegin : public thrust::unary_function<float,T>
     }
 };
 
+/**
+ * Binary search for end position
+ */
 template <typename T>
 struct findEnd : public thrust::unary_function<float,T>
 {
-    thrust::device_ptr<const float> d_r;
-    thrust::device_ptr<const uint32_t> d_pep_idx_r_sorted;
+    //thrust::device_ptr<const float> d_r;
+    const float    *d_r;
+    const uint32_t *d_pep_idx_r_sorted;
     const uint32_t num_pep;
     const float    mass;
     const float    eps;
 
     __host__ __device__
-    findEnd (thrust::device_ptr<const float> _r, 
-              thrust::device_ptr<const uint32_t> _r_sorted,
+    findEnd (const float     *_r, 
+              const uint32_t *_r_sorted,
               const uint32_t _n,
               const float    _m,
               const float    _eps) 
@@ -462,6 +474,10 @@ struct findEnd : public thrust::unary_function<float,T>
     }
 };
 
+
+/**
+ * For each modification, finds peptides within range by finding the begin and end ranges to pep_idx_r_sorted
+ */
 uint32_t
 findBeginEnd_f
 (
@@ -470,8 +486,8 @@ findBeginEnd_f
     uint32_t            *d_num_pep_raw,
     uint32_t            *d_num_pep_scan_raw,
 
-    const float         *d_r_raw,
-    const uint32_t      *d_pep_idx_r_sorted_raw,
+    const float         *d_r,
+    const uint32_t      *d_pep_idx_r_sorted,
     const uint32_t      num_pep,
 
     const float         *d_mod_delta_raw,
@@ -480,36 +496,43 @@ findBeginEnd_f
     const float         eps
 )
 {
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time_t t_beg, t_end;
+    time(&t_beg);
+#endif 
+
     if (num_mod == 0) return 0;
+    // setup device ptrs
     thrust::device_ptr<uint32_t> d_begin(d_begin_raw);
     thrust::device_ptr<uint32_t> d_end(d_end_raw);
     thrust::device_ptr<uint32_t> d_num_pep(d_num_pep_raw);
     thrust::device_ptr<uint32_t> d_num_pep_scan(d_num_pep_scan_raw);
 
-    thrust::device_ptr<const float> d_r(d_r_raw);
-    thrust::device_ptr<const uint32_t> d_pep_idx_r_sorted(d_pep_idx_r_sorted_raw);
     thrust::device_ptr<const float> d_mod_delta(d_mod_delta_raw);
 
+    // Find begin and ends
     thrust::transform(d_mod_delta, d_mod_delta + num_mod, d_begin, findBegin<uint32_t>(d_r, d_pep_idx_r_sorted, num_pep, mass, eps));
     thrust::transform(d_mod_delta, d_mod_delta + num_mod, d_end, findEnd<uint32_t>(d_r, d_pep_idx_r_sorted, num_pep, mass, eps));
 
+    // calc number of peptides in a range
     thrust::transform(d_end, d_end + num_mod, d_begin, d_num_pep, thrust::minus<uint32_t>());
-    thrust::transform(d_end, d_end + num_mod, d_begin, d_num_pep, thrust::minus<uint32_t>());
+    // scan the above 
     thrust::exclusive_scan(d_num_pep, d_num_pep + num_mod, d_num_pep_scan);
-    //for (uint32_t i = 0; i < num_mod; i++) {
-        //std::cout << d_num_pep[i] << std::endl;
-    //}
 
 
-//#ifdef _DEBUG
+#ifdef _DEBUG
+// check begin and ends are sane
+    thrust::device_ptr<const float> d_r_th(d_r);
+    thrust::device_ptr<const uint32_t> d_pep_idx_r_sorted_th(d_pep_idx_r_sorted);
     for (uint32_t i = 0; i < num_mod; ++i) {
         const float target_l = mass - d_mod_delta[i] - eps;
         const float target_u = mass - d_mod_delta[i] + eps;
 
         //std::cerr << "num_pep " << d_num_pep[i] << " scan " << d_num_pep_scan[i] << " beg " << d_begin[i] << " end " << d_end[i] << std::endl;
         if (d_begin[i] < d_end[i]) {
-            const float beginMass = d_r[d_pep_idx_r_sorted[d_begin[i]]];
-            const float lastMass = d_r[d_pep_idx_r_sorted[d_end[i] - 1]];
+            const float beginMass = d_r_th[d_pep_idx_r_sorted_th[d_begin[i]]];
+            const float lastMass = d_r_th[d_pep_idx_r_sorted_th[d_end[i] - 1]];
 
             //std::cout << target_l << " " << beginMass << " " << d_begin[i] << " " << d_num_pep[i] << " " << d_end[i] << " " << lastMass << " " << target_u << std::endl;
             if (!(target_l <= beginMass) ||
@@ -518,14 +541,14 @@ findBeginEnd_f
                 exit(1);
             }
             if (d_begin[i] > 0) {
-                const float beginMass_ = d_r[d_pep_idx_r_sorted[d_begin[i] - 1]];
+                const float beginMass_ = d_r_th[d_pep_idx_r_sorted_th[d_begin[i] - 1]];
                 if (!(target_l > beginMass_)) {
                     std::cerr << "findBeginEnd doesn't seem to be correct (2)" << std::endl;
                     exit(2);
                 }
             }
             if (d_end[i] < num_pep) {
-                const float endMass_ = d_r[d_pep_idx_r_sorted[d_end[i]]];
+                const float endMass_ = d_r_th[d_pep_idx_r_sorted_th[d_end[i]]];
                 if (!(target_u < endMass_)) {
                     std::cerr << "findBeginEnd doesn't seem to be correct (3)" << std::endl;
                     exit(3);
@@ -537,39 +560,54 @@ findBeginEnd_f
 
         }
     }
-//#endif
-    return thrust::reduce(d_num_pep, d_num_pep + num_mod);
+#endif
+
+    uint32_t total = thrust::reduce(d_num_pep, d_num_pep + num_mod);
+
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time(&t_end);
+    printf ("Time elapsed for findBeginEnd_f: %.2lf seconds\n", difftime(t_end,t_beg));
+#endif 
+    // return total peptides
+    return total;
 }
 
+/**
+ * The peptides from begin to end are laid out to be search in parallel together
+ * pep_idx is the idx to the original r,c,n array
+ * pep_mod_idx is the idx to the modification which it can be applied to
+ */
 template <typename T>
 struct fillPepAndModIdx : public thrust::unary_function<T, void>
 {
-    thrust::device_ptr<T> d_out_pep_idx;
-    thrust::device_ptr<T> d_out_pep_mod_idx;
+    //thrust::device_ptr<T> d_out_pep_idx;
+    T *d_out_pep_idx;
+    T *d_out_pep_mod_idx;
 
-    thrust::device_ptr<const T> d_pep_idx_r_sorted;
-    thrust::device_ptr<const T> d_begin;
-    thrust::device_ptr<const T> d_end;
-    thrust::device_ptr<const T> d_num_pep_scan;
+    const T *d_pep_idx_r_sorted;
+    const T *d_begin;
+    const T *d_end;
+    const T *d_num_pep_scan;
 
     __host__ __device__
-    fillPepAndModIdx(thrust::device_ptr<T> _pi,
-                     thrust::device_ptr<T> _pmi,
-                     thrust::device_ptr<const T> _pirs,
-                     thrust::device_ptr<const T> _b,
-                     thrust::device_ptr<const T> _e,
-                     thrust::device_ptr<const T> _nps)
+    fillPepAndModIdx(T *_pi,
+                     T *_pmi,
+                     const T *_pirs,
+                     const T *_b,
+                     const T *_e,
+                     const T *_nps)
                     : d_out_pep_idx(_pi), d_out_pep_mod_idx(_pmi), d_pep_idx_r_sorted(_pirs), d_begin(_b), d_end(_e), d_num_pep_scan(_nps) {}
 
     __host__ __device__ void operator() (T mod_idx)
     {
         T pep_idx;
-        T out_idx = d_num_pep_scan[mod_idx];
+        T out_idx = d_num_pep_scan[mod_idx]; // position in the out array
         for (T i = d_begin[mod_idx]; i != d_end[mod_idx]; ++i) {
             pep_idx = d_pep_idx_r_sorted[i];
 
-            *((d_out_pep_idx + out_idx).get()) = pep_idx;
-            *((d_out_pep_mod_idx + out_idx).get()) = mod_idx;
+            d_out_pep_idx[out_idx] = pep_idx;
+            d_out_pep_mod_idx[out_idx] = mod_idx;
             ++out_idx;
         }
     }
@@ -607,31 +645,20 @@ findModablePeptides
     const uint32_t      num_ma
 )
 {
+    time_t t_beg, t_end;
+    time(&t_beg);
     //std::cout << "findModablePeptides" << std::endl;
     //printGPUMemoryUsage();
 
     thrust::device_ptr<uint32_t> d_out_valid(d_out_valid_raw);
-    thrust::device_ptr<uint32_t> d_out_pep_idx(d_out_pep_idx_raw);
-    thrust::device_ptr<uint32_t> d_out_pep_mod_idx(d_out_pep_mod_idx_raw);
-
-    thrust::device_ptr<const uint32_t> d_pep_idx_r_sorted(d_pep_idx_r_sorted_raw);
-    thrust::device_ptr<const uint32_t> d_begin(d_begin_raw);
-    thrust::device_ptr<const uint32_t> d_end(d_end_raw);
-    thrust::device_ptr<const uint32_t> d_num_pep_scan(d_num_pep_scan_raw);
 
     // fill arrays for use later on
     thrust::counting_iterator<uint32_t> first(0);
     thrust::counting_iterator<uint32_t> last = first + num_mod;
-    thrust::for_each(first, last, fillPepAndModIdx<uint32_t>(d_out_pep_idx, d_out_pep_mod_idx, d_pep_idx_r_sorted, d_begin, d_end, d_num_pep_scan));
-
-    //for (uint32_t i = 0; i < num_pep_total; ++i) {
-        //std::cout << " pep idx " << d_out_pep_idx[i] << " mod_idx " << d_out_pep_mod_idx[i] << std::endl;
-    //}
+    thrust::for_each(first, last, fillPepAndModIdx<uint32_t>(d_out_pep_idx_raw, d_out_pep_mod_idx_raw, d_pep_idx_r_sorted_raw, d_begin_raw, d_end_raw, d_num_pep_scan_raw));
 
     // non compacted arrays
     thrust::device_vector<uint32_t> d_valid_v(num_pep_total);
-    //thrust::device_vector<uint32_t> d_pep_ma_count_v(num_pep_total*num_ma);
-    //thrust::device_ptr<uint32_t> d_out_pep_ma_count(d_out_pep_ma_count_raw);
 
     switch (num_ma)
     {
@@ -649,22 +676,22 @@ findModablePeptides
         assert(!"Non-exhaustive patterns in match");
     }
 
-    //// compact : prepare thrust ptrs 
-    //thrust::device_ptr<const uint32_t>  d_valid(d_valid_v.data().get());
-    //thrust::device_ptr<uint32_t>        d_out_valid(d_out_valid_raw);
-
-    //thrust::device_ptr<const uint32_t>  d_pep_ma_count(d_pep_ma_count_v.data().get());
-    //thrust::device_ptr<uint32_t>        d_out_pep_ma_count(d_out_pep_ma_count_raw);
-   
     // compact : d_valid
     // copy if d_valid[i] > 0
+    
     last = first + num_pep_total;
     thrust::device_ptr<uint32_t> d_out_valid_end =
         thrust::copy_if(first, last, d_valid_v.begin(), d_out_valid, greaterThan<const uint32_t>(0));
 
     const uint32_t numValid = d_out_valid_end - d_out_valid;
 
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time(&t_end);
+    printf ("Time elapsed for findModablePeptides: %.2lf seconds\n", difftime(t_end,t_beg));
+#endif 
     return numValid;
+
     //// compact : d_pep_ma_count
     //// First expand d_valid to a 2d matrix ie same length as d_pep_ma_count
     //// eg for ma_length 3 and d_valid [1,1,0,1] to

@@ -18,6 +18,7 @@
 #include "utils.h"
 #include "algorithms.h"
 
+#include <time.h>
 
 template <typename T>
 struct prepare : public thrust::unary_function<T, void>
@@ -98,6 +99,12 @@ prepareGenMod
     const uint32_t    num_mpep
 )
 {
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time_t t_beg, t_end;
+    time(&t_beg);
+#endif 
+
     //std::cout << "prepareGenMod" << std::endl;
     //printGPUMemoryUsage();
 
@@ -132,6 +139,11 @@ prepareGenMod
         //std::cout << " ma_num_comb_scan " << d_mpep_mod_ma_count_sum_scan_th[i] << std::endl;
     //}
     //std::cout << " ma_total " << ma_total << " lat count " << d_out_mpep_mod_ma_count_sum_th[num_mpep-1] << std::endl;
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time(&t_end);
+    printf ("Time elapsed for prepareGenMod: %.2lf seconds\n", difftime(t_end,t_beg));
+#endif 
     return ma_total;
 }
 
