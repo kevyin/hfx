@@ -174,6 +174,8 @@ calcTotalModCands
     // now determine the number of modified peptides per peptide 
     // by multiplying the number of combinations for each ma
     // at the same time fill out the _scan array
+    //
+    // Note: Tried this using thrust: scan_by_key, reduce_by_key and transform_iterator, but was slower
     last = first + nPep;
     thrust::transform(first, last, d_out_pep_num_mpep, calcNumMPepPerPep<const uint32_t>(d_out_pep_ma_num_comb_raw, d_out_pep_ma_num_comb_scan_raw, num_ma));
 
