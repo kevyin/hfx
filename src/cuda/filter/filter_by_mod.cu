@@ -620,6 +620,183 @@ struct fillPepAndModIdx : public thrust::unary_function<T, void>
  * record those that are valid and the number of each modable acid in 
  * the peptide
  */ 
+/*uint32_t*/
+/*findModablePeptides*/
+/*(*/
+    /*uint32_t            *d_out_valid_raw, // valid peptide array indices*/
+    /*uint32_t            *d_out_pep_idx_raw, */
+    /*uint32_t            *d_out_pep_mod_idx_raw, */
+    /*uint32_t            *d_out_pep_ma_count_raw,   // 2d array, count of each ma in each peptide*/
+    /*uint32_t            num_pep_total,*/
+
+    /*const uint8_t       *d_ions,*/
+    /*const uint32_t      *d_tc,*/
+    /*const uint32_t      *d_tn,*/
+
+    /*const uint32_t      *d_pep_idx_r_sorted_raw,*/
+
+    /*const uint32_t      *d_begin_raw,*/
+    /*const uint32_t      *d_end_raw,*/
+    /*const uint32_t      *d_num_pep_scan_raw,*/
+    /*const uint32_t      *d_mod_ma_count,*/
+    /*const uint32_t      num_mod,*/
+
+    /*const uint8_t       *d_ma,*/
+    /*const uint32_t      num_ma*/
+/*)*/
+/*{*/
+/*#ifdef _BENCH*/
+    /*time_t t_beg, t_end;*/
+    /*time(&t_beg);*/
+/*#endif*/
+    /*//std::cout << "findModablePeptides" << std::endl;*/
+    /*//printGPUMemoryUsage();*/
+
+    /*thrust::device_ptr<uint32_t> d_out_valid(d_out_valid_raw);*/
+
+    /*// fill arrays for use later on*/
+    /*thrust::counting_iterator<uint32_t> first(0);*/
+    /*thrust::counting_iterator<uint32_t> last = first + num_mod;*/
+    /*thrust::for_each(first, last, fillPepAndModIdx<uint32_t>(d_out_pep_idx_raw, d_out_pep_mod_idx_raw, d_pep_idx_r_sorted_raw, d_begin_raw, d_end_raw, d_num_pep_scan_raw));*/
+
+    /*// non compacted arrays*/
+    /*thrust::device_vector<uint32_t> d_valid_v(num_pep_total);*/
+
+    /*switch (num_ma)*/
+    /*{*/
+    /*case 1: findModablePeptides_dispatch<1>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 2: findModablePeptides_dispatch<2>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 3: findModablePeptides_dispatch<3>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 4: findModablePeptides_dispatch<4>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 5: findModablePeptides_dispatch<5>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 6: findModablePeptides_dispatch<6>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 7: findModablePeptides_dispatch<7>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 8: findModablePeptides_dispatch<8>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 9: findModablePeptides_dispatch<9>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 10: findModablePeptides_dispatch<10>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*default:*/
+        /*assert(!"Non-exhaustive patterns in match");*/
+    /*}*/
+
+    /*// compact : d_valid*/
+    /*// copy if d_valid[i] > 0*/
+    
+    /*last = first + num_pep_total;*/
+    /*thrust::device_ptr<uint32_t> d_out_valid_end =*/
+        /*thrust::copy_if(first, last, d_valid_v.begin(), d_out_valid, greaterThan<const uint32_t>(0));*/
+
+    /*const uint32_t numValid = d_out_valid_end - d_out_valid;*/
+
+/*#ifdef _BENCH*/
+    /*cudaThreadSynchronize();*/
+    /*time(&t_end);*/
+    /*printf ("Time elapsed for findModablePeptides: %.2lf seconds\n", difftime(t_end,t_beg));*/
+/*#endif */
+    /*return numValid;*/
+
+    /*//// compact : d_pep_ma_count*/
+    /*//// First expand d_valid to a 2d matrix ie same length as d_pep_ma_count*/
+    /*//// eg for ma_length 3 and d_valid [1,1,0,1] to*/
+    /*//// [1,1,1,*/
+    /*////  1,1,1,*/
+    /*////  0,0,0,*/
+    /*////  1,1,1]*/
+    /*//// use this array to determine whether elements in pep_ma_count should be copied*/
+    /*//const uint32_t N = ma_length*sub_idx_length;*/
+    /*//thrust::counting_iterator<uint32_t> first(0);*/
+    /*//thrust::counting_iterator<uint32_t> last = first + N;*/
+    /*//thrust::device_vector<uint32_t> d_valid_padded_th(N);*/
+
+    /*//thrust::transform(first, last, d_valid_padded_th.begin(), fillMatrixRow<const uint32_t>(d_valid, ma_length));  */
+    
+    /*//thrust::device_ptr<uint32_t> d_out_pep_ma_count_end =*/
+        /*//thrust::copy_if(d_pep_ma_count, d_pep_ma_count + N, d_valid_padded_th.begin(), d_out_pep_ma_count, greaterThan<const uint32_t>(0));*/
+
+/*//#ifdef _DEBUG*/
+    /*//printGPUMemoryUsage();*/
+
+    /*//checkFindModablePeptides(d_ions, d_tc, d_tn,*/
+                             /*//d_sub_idx, sub_idx_length,*/
+                             /*//d_ma, d_ma_count, ma_length,*/
+                             /*//numValid, d_out_valid, d_out_pep_ma_count);*/
+/*//#endif*/
+
+    /*//return numValid;*/
+/*}*/
+
+template <typename T>
+struct fillPepMACount: public thrust::unary_function<T, T>
+{
+    const T *d_pep_idx;
+    const T *d_tc;
+    const T *d_tn;
+    const uint8_t *d_ions;
+    const uint8_t *d_ma;
+    const T num_ma;  
+
+    __host__ __device__
+    fillPepMACount(const T *_pep_idx,
+                   const T *_tc,
+                   const T *_tn,
+                   const uint8_t *_ions,
+                   const uint8_t *_ma,
+                   const T _num_ma)
+                    : d_pep_idx(_pep_idx),
+                      d_tc(_tc),
+                      d_tn(_tn),
+                      d_ions(_ions),
+                      d_ma(_ma),
+                      num_ma(_num_ma) {}
+
+    __host__ __device__ T operator() (T i)
+    {
+        T idx     = i / num_ma;
+        T pep_idx = d_pep_idx[idx];
+        T ma_idx  = i % num_ma;
+        uint8_t ma  = d_ma[ma_idx];
+        T count   = 0;
+        for (T a = d_tc[pep_idx] ; a < d_tn[pep_idx]; ++a) {
+            uint8_t ion = d_ions[a];    
+            if (ion == ma) {
+                count++;
+            }
+        }
+        return count;
+    }
+};
+
+template <typename T>
+struct checkModable: public thrust::unary_function<T, T>
+{
+    const T *d_pep_ma_count;
+    const T *d_pep_mod_idx;
+    const T *d_mod_ma_count;
+    const T num_ma;  
+
+    __host__ __device__
+    checkModable(const T *_pep_ma_count,
+                 const T *_pep_mod_idx,
+                 const T *_mod_ma_count,
+                 const T _num_ma)
+                 : d_pep_ma_count(_pep_ma_count),
+                   d_pep_mod_idx(_pep_mod_idx),
+                   d_mod_ma_count(_mod_ma_count),
+                   num_ma(_num_ma) {}
+
+    __host__ __device__ T operator() (T idx)
+    {
+        T pep_start = num_ma * idx ;
+        T mod_start = num_ma * d_pep_mod_idx[idx];
+        for (T ma = 0; ma < num_ma; ++ma) {
+            if (d_pep_ma_count[pep_start + ma] < d_mod_ma_count[mod_start + ma]) {
+                return 0;
+            }
+        }
+        return 1;
+    }
+};
+
+// Using thrust
 uint32_t
 findModablePeptides
 (
@@ -645,12 +822,12 @@ findModablePeptides
     const uint32_t      num_ma
 )
 {
-    time_t t_beg, t_end;
-    time(&t_beg);
     //std::cout << "findModablePeptides" << std::endl;
     //printGPUMemoryUsage();
 
     thrust::device_ptr<uint32_t> d_out_valid(d_out_valid_raw);
+    thrust::device_ptr<uint32_t> d_out_pep_ma_count(d_out_pep_ma_count_raw);
+
 
     // fill arrays for use later on
     thrust::counting_iterator<uint32_t> first(0);
@@ -659,22 +836,31 @@ findModablePeptides
 
     // non compacted arrays
     thrust::device_vector<uint32_t> d_valid_v(num_pep_total);
+    /*thrust::device_vector<uint32_t> d_out_pep_ma_count2(num_ma*num_pep_total);*/
 
-    switch (num_ma)
-    {
-    case 1: findModablePeptides_dispatch<1>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
-    case 2: findModablePeptides_dispatch<2>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
-    case 3: findModablePeptides_dispatch<3>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
-    case 4: findModablePeptides_dispatch<4>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
-    case 5: findModablePeptides_dispatch<5>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
-    case 6: findModablePeptides_dispatch<6>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
-    case 7: findModablePeptides_dispatch<7>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
-    case 8: findModablePeptides_dispatch<8>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
-    case 9: findModablePeptides_dispatch<9>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
-    case 10: findModablePeptides_dispatch<10>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;
-    default:
-        assert(!"Non-exhaustive patterns in match");
-    }
+    // count and valid
+    
+    /*switch (num_ma)*/
+    /*{*/
+    /*case 1: findModablePeptides_dispatch<1>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 2: findModablePeptides_dispatch<2>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 3: findModablePeptides_dispatch<3>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 4: findModablePeptides_dispatch<4>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 5: findModablePeptides_dispatch<5>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 6: findModablePeptides_dispatch<6>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 7: findModablePeptides_dispatch<7>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 8: findModablePeptides_dispatch<8>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 9: findModablePeptides_dispatch<9>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*case 10: findModablePeptides_dispatch<10>(d_valid_v.data().get(), d_out_pep_ma_count_raw, d_ions, d_tc, d_tn, d_ma, num_ma, d_mod_ma_count, d_out_pep_idx_raw, d_out_pep_mod_idx_raw, num_pep_total); break;*/
+    /*default:*/
+        /*assert(!"Non-exhaustive patterns in match");*/
+    /*}*/
+
+    last = first + num_pep_total * num_ma;
+    thrust::transform(first, last, d_out_pep_ma_count, fillPepMACount<uint32_t>(d_out_pep_idx_raw, d_tc, d_tn, d_ions, d_ma, num_ma));
+
+    last = first + num_pep_total;
+    thrust::transform(first, last, d_valid_v.begin(), checkModable<uint32_t>(d_out_pep_ma_count_raw, d_out_pep_mod_idx_raw, d_mod_ma_count, num_ma));
 
     // compact : d_valid
     // copy if d_valid[i] > 0
@@ -683,41 +869,22 @@ findModablePeptides
     thrust::device_ptr<uint32_t> d_out_valid_end =
         thrust::copy_if(first, last, d_valid_v.begin(), d_out_valid, greaterThan<const uint32_t>(0));
 
+
     const uint32_t numValid = d_out_valid_end - d_out_valid;
 
-#ifdef _BENCH
-    cudaThreadSynchronize();
-    time(&t_end);
-    printf ("Time elapsed for findModablePeptides: %.2lf seconds\n", difftime(t_end,t_beg));
-#endif 
+    /*for (uint32_t iv = 0; iv < numValid; iv++) {*/
+        /*uint32_t i = d_out_valid[iv];*/
+        /*std::cout << "mpep i = " << i << " ";*/
+        /*for (uint32_t ma = 0; ma < num_ma; ++ma) {*/
+            /*uint32_t idx = i*num_ma + ma;*/
+            /*if (d_out_pep_ma_count2[idx] != d_out_pep_ma_count[idx]) {*/
+                /*std::cout << "orig " << d_out_pep_ma_count[idx] << " ";*/
+                /*std::cout << "new " << d_out_pep_ma_count2[idx];*/
+                /*std::cout << "DIFFFF";*/
+            /*}*/
+        /*}*/
+        /*std::cout << std::endl;*/
+    /*}  */
+
     return numValid;
-
-    //// compact : d_pep_ma_count
-    //// First expand d_valid to a 2d matrix ie same length as d_pep_ma_count
-    //// eg for ma_length 3 and d_valid [1,1,0,1] to
-    //// [1,1,1,
-    ////  1,1,1,
-    ////  0,0,0,
-    ////  1,1,1]
-    //// use this array to determine whether elements in pep_ma_count should be copied
-    //const uint32_t N = ma_length*sub_idx_length;
-    //thrust::counting_iterator<uint32_t> first(0);
-    //thrust::counting_iterator<uint32_t> last = first + N;
-    //thrust::device_vector<uint32_t> d_valid_padded_th(N);
-
-    //thrust::transform(first, last, d_valid_padded_th.begin(), fillMatrixRow<const uint32_t>(d_valid, ma_length));  
-    
-    //thrust::device_ptr<uint32_t> d_out_pep_ma_count_end =
-        //thrust::copy_if(d_pep_ma_count, d_pep_ma_count + N, d_valid_padded_th.begin(), d_out_pep_ma_count, greaterThan<const uint32_t>(0));
-
-//#ifdef _DEBUG
-    //printGPUMemoryUsage();
-
-    //checkFindModablePeptides(d_ions, d_tc, d_tn,
-                             //d_sub_idx, sub_idx_length,
-                             //d_ma, d_ma_count, ma_length,
-                             //numValid, d_out_valid, d_out_pep_ma_count);
-//#endif
-
-    //return numValid;
 }
