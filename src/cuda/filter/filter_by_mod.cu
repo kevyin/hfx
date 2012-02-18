@@ -15,6 +15,7 @@
 #include <iostream>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/device_vector.h>
+#include <thrust/copy.h>
 #include <thrust/scan.h>
 
 #include <time.h>
