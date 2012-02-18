@@ -21,14 +21,19 @@
 --
 --------------------------------------------------------------------------------
 
-module Sequence.Search (searchForMatches) where
+module Sequence.Search 
+  (
+    searchForMatches, 
+    SearchPlan(..), makePlans, retrieveMatches
+  ) 
+  where
 
 import Mass
 import Config
 import Spectrum
 import Sequence.Match
 import Sequence.Fragment
-import Sequence.Location
+import qualified Sequence.Location              as SL
 import Sequence.IonSeries
 import Util.Misc                                hiding (sublist)
 import Util.C2HS
@@ -38,10 +43,12 @@ import Data.Word
 import Data.Maybe
 import Data.List                                hiding (lookup)
 import Control.Monad
+import Control.Concurrent.MVar                  (MVar, newEmptyMVar, putMVar, readMVar)
 import System.IO
 import Prelude                                  hiding (lookup)
 
-import Foreign (sizeOf)
+import Foreign                                  (sizeOf, Ptr)
+import qualified Foreign.Marshal                as FM (mallocArray, peekArray)
 import Foreign.CUDA (DevicePtr)
 import qualified Data.Vector.Generic            as G
 import qualified Data.Vector.Unboxed            as U
@@ -72,6 +79,37 @@ type IonSeries  = DevicePtr Word32
 type SearchSection = (Int, Int)
 
 --------------------------------------------------------------------------------
+-- Search plan
+--------------------------------------------------------------------------------
+data SearchPlan = SearchPlan
+  {
+    device    :: Int,
+    database  :: SequenceDB,
+    fileName  :: FilePath,
+    samples   :: [MS2Data],
+    nsamples  :: Int,
+    h_sc      :: [Ptr Float],
+    h_ix      :: [Ptr Word32],
+    numRes    :: [MVar Int]
+  }
+
+-- |Search Plan the the ith sample spectrum to be searched
+type SearchSpec = (SearchPlan,Int)
+
+makePlans :: ConfigParams -> Int -> [SequenceDB] -> [(String, [MS2Data])] -> IO [SearchPlan]
+makePlans cp n sdbs fileSamps = 
+  let nres  = max (numMatches cp) (numMatchesDetail cp) 
+  in 
+  liftM concat $ forM (zip [0..(n-1)] sdbs) $ \(dev,db) ->
+    forM fileSamps $ \(fp,samps) -> 
+      let  nsamp = length samps in do
+      scs <- replicateM nsamp $ FM.mallocArray nres
+      ixs <- replicateM nsamp $ FM.mallocArray nres
+      res <- replicateM nsamp $ newEmptyMVar
+      return $ SearchPlan dev db fp samps nsamp scs ixs res
+
+
+--------------------------------------------------------------------------------
 -- Search
 --------------------------------------------------------------------------------
 
@@ -79,32 +117,33 @@ type SearchSection = (Int, Int)
 -- |Search an amino acid sequence database to find the most likely matches to a
 -- given experimental spectrum.
 --
-searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
-searchForMatches cp sdb ddb hmi dmi ms2 = do
-  (t,matches) <- bracketTime $ searchWithoutMods cp sdb ddb ms2 
+searchForMatches :: SearchSpec -> ConfigParams -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> IO ()
+searchForMatches (plan,ithSamp) cp sdb ddb hmi dmi = do
+  searchWithoutMods (plan,ithSamp) cp sdb ddb
   --when (verbose cp) $ hPutStrLn stderr ("Search Without Modifications Elapsed time: " ++ showTime t)
 
-  (t2,matchesMods) <- bracketTime $ case dmi of
-                    NoDMod -> return []
-                    _      -> searchWithMods cp sdb ddb hmi dmi ms2 
+  --(t2,matchesMods) <- bracketTime $ case dmi of
+                    --NoDMod -> return []
+                    --_      -> searchWithMods cp sdb ddb hmi dmi ms2 
   --when (verbose cp) $ hPutStrLn stderr ("Search With Modifications Elapsed time: " ++ showTime t2)
 
-  return $ sortBy matchScoreOrder $ matches ++ matchesMods
+  --return $ sortBy matchScoreOrder $ matches-- ++ matchesMods
 
 --
 -- |Search without modifications
 --
-searchWithoutMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
-searchWithoutMods cp sdb ddb ms2 =
+searchWithoutMods :: SearchSpec -> ConfigParams -> SequenceDB -> DeviceSeqDB -> IO ()
+searchWithoutMods ss@(plan,ithSamp) cp sdb ddb =
   filterCandidateByMass cp ddb mass                                   $ \candidatesByMass ->
   mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)          $ \specThry   -> do
-  mapMaybe finish `fmap` sequestXC cp candidatesByMass spec specThry
+  sequestXC ss cp candidatesByMass spec specThry
   where
+    ms2           = samples plan !! ithSamp
     spec          = sequestXCorr cp ms2
-    peaks         = extractPeaks spec
+    --peaks         = extractPeaks spec
 
-    finish (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)
-    sp            = matchIonSequence cp (ms2charge ms2) peaks
+    --finish (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)
+    --sp            = matchIonSequence cp (ms2charge ms2) peaks
     mass          = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
 
 --
@@ -123,7 +162,7 @@ searchWithMods cp sdb ddb hmi dmi ms2 =
     spec          = sequestXCorr cp ms2
     peaks         = extractPeaks spec
     sp            = matchIonSequence cp (ms2charge ms2) peaks
-    finish (sx,i,pmod,u) = liftM (\f -> Match (modifyFragment pmod u f) sx (sp f) pmod u) (lookup sdb i)
+    finish (sx,i,pmod,u) = liftM (\f -> Match (modifyFragment pmod u f) sx (sp f) pmod u) (SL.lookup sdb i)
   
 --
 -- |Search the protein database for candidate peptides within the specified mass
@@ -299,8 +338,11 @@ mkSpecXCorr db (nIdx, d_idx) chrg len action =
 -- |Score each candidate sequence against the observed intensity spectra,
 -- returning the most relevant results.
 --
-sequestXC :: ConfigParams -> CandidatesByMass -> Spectrum -> IonSeries -> IO [(Float,Int)]
-sequestXC cp (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatchesDetail cp) in
+sequestXC :: SearchSpec -> ConfigParams -> CandidatesByMass -> Spectrum -> IonSeries -> IO ()
+sequestXC ss@(plan,ithSamp) cp (nIdx,d_idx) expr d_thry = 
+  let n' = max (numMatches cp) (numMatchesDetail cp) 
+      n  = min n' nIdx
+  in
   CUDA.withVector  expr $ \d_expr  ->
   CUDA.allocaArray nIdx $ \d_score -> do
     --when (verbose cp) $ hPutStrLn stderr ("Matched peptides: " ++ show nIdx)
@@ -308,20 +350,42 @@ sequestXC cp (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatches
     -- There may be no candidates as a result of bad database search parameters,
     -- or if something unexpected happened (out of memory)
     --
-    if nIdx == 0 then return [] else do
+    --if nIdx == 0 then return [] else do
 
-    -- Score and rank each candidate sequence
-    --
-    CUDA.mvm   d_score d_thry d_expr nIdx (G.length expr)
-    CUDA.rsort d_score d_idx nIdx
+    ---- Score and rank each candidate sequence
+    ----
+    when (nIdx > 0) $ do
+      CUDA.mvm   d_score d_thry d_expr nIdx (G.length expr)
+      CUDA.rsort d_score d_idx nIdx
 
-    -- Retrieve the most relevant matches
-    --
-    let n = min n' nIdx
-    sc <- CUDA.peekListArray n d_score
-    ix <- CUDA.peekListArray n d_idx
+    ---- Retrieve the most relevant matches
+    ----
+      CUDA.peekArray n d_score (h_sc plan !! ithSamp)
+      CUDA.peekArray n d_idx   (h_ix plan !! ithSamp)
+    putMVar (numRes plan !! ithSamp) n
 
-    return $ zipWith (\s i -> (s/10000,fromIntegral i)) sc ix
+    --return $ zipWith (\s i -> (s/10000,fromIntegral i)) sc ix
+
+retrieveMatches :: ConfigParams -> [SearchPlan] -> IO [(FilePath, MS2Data, Match)]
+retrieveMatches cp results = 
+  liftM concat $ forM results $ \plan -> 
+    let nsamp = nsamples plan 
+        sdb   = database plan
+    in
+    liftM concat $ forM [0..(nsamp-1)] $ \samp -> do
+      let ms2           = samples plan !! samp
+          spec          = sequestXCorr cp ms2
+          peaks         = extractPeaks spec
+          finish (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (SL.lookup sdb i)
+          sp            = matchIonSequence cp (ms2charge ms2) peaks
+
+      n  <- readMVar $ numRes plan !! samp
+      sc <- FM.peekArray n (h_sc plan !! samp)
+      ix <- FM.peekArray n (h_ix plan !! samp)
+      let matches = zipWith (\s i -> (s/10000, fromIntegral i)) sc ix
+          matchCollection = mapMaybe finish matches
+      return $ map (\m -> (fileName plan,ms2,m)) matchCollection
+
 
 --
 -- |Modified candidates version
@@ -380,3 +444,4 @@ sequestXCMod cp hmi (_, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpe
     return $ zipWith pack score mpep_idx
     where
     sublist beg num ls = U.drop beg $ U.take (beg + num) ls
+

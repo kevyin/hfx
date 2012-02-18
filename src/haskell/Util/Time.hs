@@ -46,6 +46,14 @@ bracketTime f = do
   t2 <- r `seq` getTime
   return (elapsedTime t1 t2, r)
 
+bracketTimeF :: IO b -> IO a -> IO (Time, a)
+bracketTimeF finaliser f = do
+  t1 <- getTime
+  r  <- f
+  _  <- finaliser
+  t2 <- r `seq` getTime
+  return (elapsedTime t1 t2, r)
+
 {-# NOINLINE benchmark #-}
 benchmark
   :: Int                -- Number of times to repeat test

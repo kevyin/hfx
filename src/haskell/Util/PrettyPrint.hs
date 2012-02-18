@@ -148,11 +148,11 @@ toIonDetail cp (Match f _ (b,y) _ _) = map (B.vcat B.right)
         ladder        = scanl1 (+) . map (getAAMass cp) $ L.unpack pep
 
 
-printScanResults :: ConfigParams -> FilePath -> [[(FilePath, MS2Data, Match)]] -> IO ()
-printScanResults cp fp mms = do
+printScanResults :: ConfigParams -> [[(FilePath, MS2Data, Match)]] -> IO ()
+printScanResults cp mms = do
   forM_ mms $ \mm -> do 
-    let (_, ms2s ,matches) = unzip3 mm 
-    printConfig cp fp (head ms2s) -- assume ms2 are same, use the first
+    let (fp, ms2s ,matches) = unzip3 mm 
+    printConfig cp (head fp) (head ms2s) -- assume ms2 are same, use the first
     printResults           $! take (numMatches cp)       matches
     printResultsDetail     $! take (numMatchesDetail cp) matches
     --printIonMatchDetail cp $! take (numMatchesIon cp)    matches

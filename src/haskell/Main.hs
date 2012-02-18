@@ -28,6 +28,7 @@ import Data.List
 import Data.Maybe
 import Control.Monad
 import Control.Exception
+import Control.Concurrent
 import System.Environment
 import System.FilePath
 import System.IO
@@ -70,27 +71,50 @@ main = do
   --
   when (verbose cp) $ hPutStrLn stderr ("Loading Database ...\n" )
   --(cp',dbs) <- loadDatabase cp fp (splitDB cp)
-  (t,(cp',dbs)) <- bracketTime $ loadDatabase cp fp (splitDB cp)
+  --(t,(cp',dbs)) <- bracketTime $ loadDatabase cp fp (splitDB cp)
+  let gpus = 1
+  (t,(cp',dbs)) <- bracketTime $ loadDatabase cp fp gpus 
+        --when (verbose cp) $ do
+          --hPutStrLn stderr $ "Database: " ++ fp
+          --hPutStrLn stderr $ " # amino acids: " ++ (show . G.length . dbIon    $ db)
+          --hPutStrLn stderr $ " # proteins:    " ++ (show . G.length . dbHeader $ db)
+          --hPutStrLn stderr $ " # peptides:    " ++ (show . G.length . dbFrag   $ db)
+          --
   when (verbose cp) $ hPutStrLn stderr ("Load Database Elapsed time: " ++ showTime t)
+
+  when (verbose cp) $ hPutStrLn stderr ("Loading Spectrums ...\n" )
+  samples <- forM dta $ \f -> do
+    r <- readMS2Data f 
+    case r of
+      Left  s -> hPutStrLn stderr s >>= \_ -> return (f,[])
+      Right d -> do 
+        return (f,d)
+        
 
   when (verbose cp) $ hPutStrLn stderr ("Searching ...\n" )
   let hmi = makeModInfo cp'
-  (t2,allMatches') <- bracketTime $ forM dbs $ \db -> do
+  plans <- makePlans cp' gpus dbs samples
+  (t2,_) <- bracketTimeF CUDA.sync $ forM_ plans $ forkOS . \plan -> do
+  --(t2,_) <- bracketTimeF CUDA.sync $ forM_ plans $  \plan -> do
+    putStrLn $ "dev " ++ show (device plan)
+    let db = database plan
+    CUDA.set (device plan)
     withDeviceDB cp' db $ \ddb -> 
-      withDevModInfo ddb hmi $ \dmi -> forM dta $ \f -> do
-        matches <- search cp' db hmi dmi ddb f
-        when (showMatchesPerScan cp) $ printScanResults cp' f matches
-        return matches
+      withDevModInfo ddb hmi $ \dmi -> 
+        search plan cp' db hmi dmi ddb
   when (verbose cp) $ hPutStrLn stderr ("Search Elapsed time: " ++ showTime t2)
+
+  matchesRaw <- retrieveMatches cp' plans
           
 
   let sortXC = sortBy (\(_,_,a) (_,_,b) -> compare (scoreXC b) (scoreXC a))
-      matchesRaw = concat $ concat $ concat allMatches'
-      --matchesByScan = map sortXC $ groupBy (\(_,ms,_) (_,ms',_) -> ms == ms') matchesRaw
+      matchesByScan = map sortXC $ groupBy (\(_,ms,_) (_,ms',_) -> ms == ms') $ sortBy (\(_,ms,_) (_,ms',_) -> compare (ms2info ms) (ms2info ms')) matchesRaw
       --matchesByFile = map sortXC $ groupBy (\(f,_,_) (f',_,_) -> f == f') matchesRaw
       n = maximum $ [(numMatches cp'), (numMatchesDetail cp'), (numMatchesIon cp')]
       allMatchesN = take n $! sortXC $ matchesRaw
 
+  when (showMatchesPerScan cp) $ do
+      printScanResults cp' matchesByScan
   printAllResults cp' allMatchesN
     
 
@@ -108,30 +132,13 @@ loadDatabase cp fp split = do
 --
 -- Search the protein database for a match to the experimental spectra
 --
-search :: ConfigParams -> SequenceDB -> HostModInfo -> DeviceModInfo ->  DeviceSeqDB -> FilePath -> IO [[(FilePath,MS2Data,Match)]]
-search cp db hmi dmi dev fp =
-  readMS2Data fp >>= \r -> case r of
-    Left  s -> hPutStrLn stderr s >>= \_ -> return []
-    Right d -> do 
-      when (verbose cp) $ do
-        --hPutStrLn stderr $ "Database: " ++ fp
-        hPutStrLn stderr $ " # amino acids: " ++ (show . G.length . dbIon    $ db)
-        hPutStrLn stderr $ " # proteins:    " ++ (show . G.length . dbHeader $ db)
-        hPutStrLn stderr $ " # peptides:    " ++ (show . G.length . dbFrag   $ db)
-
-      allMatches <- forM d $ \ms2 -> do
-        matches <- searchForMatches cp db dev hmi dmi ms2
-        return $ map (\m -> (fp, ms2, m)) matches
-        `catch`
-        \(e :: SomeException) -> do 
-                hPutStrLn stderr $ unlines [ "scan:   " ++ (show $ ms2info ms2), "reason: " ++ show e ]
-                return []
-
-      return allMatches
-
-      `catch`
-      \(e :: SomeException) -> do 
-          hPutStrLn stderr $ unlines
-              [ "file:   " ++ fp
-              , "reason: " ++ show e ]
-          return []
+search :: SearchPlan -> ConfigParams -> SequenceDB -> HostModInfo -> DeviceModInfo ->  DeviceSeqDB -> IO ()
+search plan cp db hmi dmi dev =
+  forM_ [0..(nsamples plan - 1)] $ \i -> do
+    searchForMatches (plan,i) cp db dev hmi dmi
+  `catch`
+  \(e :: SomeException) -> do 
+      hPutStrLn stderr $ unlines
+          [ "device: " ++ (show $ device plan)
+          , "file:   " ++ fileName plan
+          , "reason: " ++ show e ]
