@@ -99,8 +99,9 @@ type SearchSpec = (SearchPlan,Int)
 makePlans :: ConfigParams -> Int -> [SequenceDB] -> [(String, [MS2Data])] -> IO [SearchPlan]
 makePlans cp n sdbs fileSamps = 
   let nres  = max (numMatches cp) (numMatchesDetail cp) 
+      devs  = take (length sdbs) $ cycle [0..(n-1)]
   in 
-  liftM concat $ forM (zip [0..(n-1)] sdbs) $ \(dev,db) ->
+  liftM concat $ forM (zip devs sdbs) $ \(dev,db) ->
     forM fileSamps $ \(fp,samps) -> 
       let  nsamp = length samps in do
       scs <- replicateM nsamp $ FM.mallocArray nres
@@ -380,6 +381,7 @@ retrieveMatches cp results =
           sp            = matchIonSequence cp (ms2charge ms2) peaks
 
       n  <- readMVar $ numRes plan !! samp
+      putStrLn $ show ("read", n)
       sc <- FM.peekArray n (h_sc plan !! samp)
       ix <- FM.peekArray n (h_ix plan !! samp)
       let matches = zipWith (\s i -> (s/10000, fromIntegral i)) sc ix

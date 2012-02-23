@@ -20,6 +20,7 @@ import Spectrum
 import Util.Time
 import Util.Show
 import Util.PrettyPrint
+import Util.Concurrent
 
 --
 -- System libraries
@@ -28,11 +29,13 @@ import Data.List
 import Data.Maybe
 import Control.Monad
 import Control.Exception
-import Control.Concurrent
+import Control.Concurrent               (threadDelay)
+import Control.Concurrent.MVar
 import System.Environment
 import System.FilePath
 import System.IO
 import Prelude                          hiding ( lookup, catch )
+import Criterion.Measurement            as CM
 
 import qualified Data.Vector.Generic    as G
 import qualified Foreign.CUDA           as CUDA
@@ -72,7 +75,7 @@ main = do
   when (verbose cp) $ hPutStrLn stderr ("Loading Database ...\n" )
   --(cp',dbs) <- loadDatabase cp fp (splitDB cp)
   --(t,(cp',dbs)) <- bracketTime $ loadDatabase cp fp (splitDB cp)
-  let gpus = 1
+  let gpus = 2
   (t,(cp',dbs)) <- bracketTime $ loadDatabase cp fp gpus 
         --when (verbose cp) $ do
           --hPutStrLn stderr $ "Database: " ++ fp
@@ -94,15 +97,26 @@ main = do
   when (verbose cp) $ hPutStrLn stderr ("Searching ...\n" )
   let hmi = makeModInfo cp'
   plans <- makePlans cp' gpus dbs samples
-  (t2,_) <- bracketTimeF CUDA.sync $ forM_ plans $ forkOS . \plan -> do
-  --(t2,_) <- bracketTimeF CUDA.sync $ forM_ plans $  \plan -> do
-    putStrLn $ "dev " ++ show (device plan)
+
+  t1 <- CM.getTime
+  res <- flip forkJoin plans $ \plan -> do
+  --res <- forM plans $ \plan -> do
     let db = database plan
     CUDA.set (device plan)
     withDeviceDB cp' db $ \ddb -> 
       withDevModInfo ddb hmi $ \dmi -> 
         search plan cp' db hmi dmi ddb
-  when (verbose cp) $ hPutStrLn stderr ("Search Elapsed time: " ++ showTime t2)
+    --threadDelay 5000000
+    return (device plan)
+  CUDA.sync
+  putStrLn $ show res
+  numResPerPlan <- mapM (liftM sum . mapM readMVar . numRes ) plans
+
+  when (verbose cp) $ hPutStrLn stderr $ show numResPerPlan
+  t2 <- CM.getTime
+  when (verbose cp) $ hPutStrLn stderr (" GPU processing time: " ++ (show $ CM.secs $ t2 - t1))
+
+  --when (verbose cp) $ hPutStrLn stderr ("Search Elapsed time: " ++ showTime t2)
 
   matchesRaw <- retrieveMatches cp' plans
           
