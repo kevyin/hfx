@@ -75,7 +75,7 @@ main = do
   when (verbose cp) $ hPutStrLn stderr ("Loading Database ...\n" )
   --(cp',dbs) <- loadDatabase cp fp (splitDB cp)
   --(t,(cp',dbs)) <- bracketTime $ loadDatabase cp fp (splitDB cp)
-  let gpus = 2
+  let gpus = 4
   (t,(cp',dbs)) <- bracketTime $ loadDatabase cp fp gpus 
         --when (verbose cp) $ do
           --hPutStrLn stderr $ "Database: " ++ fp
@@ -92,7 +92,6 @@ main = do
       Left  s -> hPutStrLn stderr s >>= \_ -> return (f,[])
       Right d -> do 
         return (f,d)
-        
 
   when (verbose cp) $ hPutStrLn stderr ("Searching ...\n" )
   let hmi = makeModInfo cp'
@@ -103,33 +102,35 @@ main = do
   --res <- forM plans $ \plan -> do
     let db = database plan
     CUDA.set (device plan)
-    withDeviceDB cp' db $ \ddb -> 
-      withDevModInfo ddb hmi $ \dmi -> 
-        search plan cp' db hmi dmi ddb
+    replicateM 70 $ do
+      withDeviceDB cp' db $ \ddb -> 
+        threadDelay 1
+      --withDevModInfo ddb hmi $ \dmi -> 
+        --search plan cp' db hmi dmi ddb
     --threadDelay 5000000
     return (device plan)
   CUDA.sync
   putStrLn $ show res
-  numResPerPlan <- mapM (liftM sum . mapM readMVar . numRes ) plans
+  --numResPerPlan <- mapM (liftM sum . mapM readMVar . numRes ) plans
 
-  when (verbose cp) $ hPutStrLn stderr $ show numResPerPlan
+  --when (verbose cp) $ hPutStrLn stderr $ show numResPerPlan
   t2 <- CM.getTime
   when (verbose cp) $ hPutStrLn stderr (" GPU processing time: " ++ (show $ CM.secs $ t2 - t1))
 
   --when (verbose cp) $ hPutStrLn stderr ("Search Elapsed time: " ++ showTime t2)
 
-  matchesRaw <- retrieveMatches cp' plans
+  --matchesRaw <- retrieveMatches cp' plans
           
 
-  let sortXC = sortBy (\(_,_,a) (_,_,b) -> compare (scoreXC b) (scoreXC a))
-      matchesByScan = map sortXC $ groupBy (\(_,ms,_) (_,ms',_) -> ms == ms') $ sortBy (\(_,ms,_) (_,ms',_) -> compare (ms2info ms) (ms2info ms')) matchesRaw
-      --matchesByFile = map sortXC $ groupBy (\(f,_,_) (f',_,_) -> f == f') matchesRaw
-      n = maximum $ [(numMatches cp'), (numMatchesDetail cp'), (numMatchesIon cp')]
-      allMatchesN = take n $! sortXC $ matchesRaw
+  --let sortXC = sortBy (\(_,_,a) (_,_,b) -> compare (scoreXC b) (scoreXC a))
+      --matchesByScan = map sortXC $ groupBy (\(_,ms,_) (_,ms',_) -> ms == ms') $ sortBy (\(_,ms,_) (_,ms',_) -> compare (ms2info ms) (ms2info ms')) matchesRaw
+      ----matchesByFile = map sortXC $ groupBy (\(f,_,_) (f',_,_) -> f == f') matchesRaw
+      --n = maximum $ [(numMatches cp'), (numMatchesDetail cp'), (numMatchesIon cp')]
+      --allMatchesN = take n $! sortXC $ matchesRaw
 
-  when (showMatchesPerScan cp) $ do
-      printScanResults cp' matchesByScan
-  printAllResults cp' allMatchesN
+  --when (showMatchesPerScan cp) $ do
+      --printScanResults cp' matchesByScan
+  --printAllResults cp' allMatchesN
     
 
 
