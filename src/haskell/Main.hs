@@ -95,7 +95,7 @@ main = do
     
 
 
-{-# INLINE loadDatabase #-}
+--{-# INLINE loadDatabase #-}
 loadDatabase :: ConfigParams -> FilePath -> Int -> IO (ConfigParams, [SequenceDB])
 loadDatabase cp fp split = do
   (cp',dbs) <- case takeExtensions fp of

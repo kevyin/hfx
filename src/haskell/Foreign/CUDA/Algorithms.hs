@@ -12,6 +12,7 @@
 
 module Foreign.CUDA.Algorithms
   (
+    countAA, digest,
     findIndicesInRange, findModablePeptides, findBeginEnd,
     calcTotalModCands, prepareGenMod, genModCands,
     addIons, addModIons, 
@@ -25,6 +26,44 @@ import Data.Word
 import Foreign
 import Foreign.CUDA                             (DevicePtr, withDevicePtr)
 
+countAA :: DevicePtr Word8 -> Int -> Int -> IO Int
+countAA a1 a2 a3 =
+  withDevicePtr a1 $ \a1' ->
+  --withDevicePtr a2 $ \a2' ->
+  --withDevicePtr a3 $ \a3' ->
+  cIntConv `fmap` countAA'_ a1' (cIntConv a2) (cIntConv a3)
+
+foreign import ccall unsafe "algorithms.h countFragByRule"
+  countAA'_ :: Ptr Word8 -> Word32 -> Word32 -> IO Word32
+
+digest :: DevicePtr Word8 
+       -> Int
+       -> DevicePtr Word32
+       -> Int 
+       -> Int
+       -> DevicePtr Float
+       -> Int
+       -> DevicePtr Float
+       -> DevicePtr Word32
+       -> DevicePtr Word32
+       -> DevicePtr Word32
+       -> IO Int
+digest a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 =
+  withDevicePtr a1 $ \a1' ->
+  --withDevicePtr a2 $ \a2' ->
+  withDevicePtr a3 $ \a3' ->
+  --withDevicePtr a4 $ \a4' ->
+  --withDevicePtr a5 $ \a5' ->
+  withDevicePtr a6 $ \a6' ->
+  --withDevicePtr a7 $ \a7' ->
+  withDevicePtr a8 $ \a8' ->
+  withDevicePtr a9 $ \a9' ->
+  withDevicePtr a10 $ \a10' ->
+  withDevicePtr a11 $ \a11' ->
+  cIntConv `fmap` digest'_ a1' (cIntConv a2) a3' (cIntConv a4) (cIntConv a5) a6' (cIntConv a7) a8' a9' a10' a11' 
+
+foreign import ccall unsafe "algorithms.h digestByRule"
+  digest'_ :: Ptr Word8 -> Word32 -> Ptr Word32 -> Word32 -> Word32 -> Ptr Float -> Word32 -> Ptr Float -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> IO Word32
 
 findIndicesInRange :: DevicePtr Float -> DevicePtr Word32 -> Int -> Float -> Float -> IO Int
 findIndicesInRange a1 a2 a3 a4 a5 =

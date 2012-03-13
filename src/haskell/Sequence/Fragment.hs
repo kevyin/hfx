@@ -45,7 +45,7 @@ import qualified Data.Vector.Fusion.Stream.Size as S
 
 import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
-import qualified Foreign.CUDA.Algorithms        as CUDA (sort_val)
+import qualified Foreign.CUDA.Algorithms        as CUDA (sort_val, countAA, digest)
 
 import Debug.Trace
 
@@ -203,37 +203,101 @@ makeSeqDB cp fp split = do
       sections = sectionsOfSplit ns' split
 
   forM sections $ \(beg, ns) -> do
+      putStrLn $ "00 ns" ++ (show ns)
+      t00 <- getTime
       let db   = sublist beg ns db'
           hdr  = headers ns db
           iseg = ionSeg  ns db
           ions = ionSeq (fromIntegral (U.last iseg)) db
-          nf   = countFrags cp ions
+          ruleNo = getDigestionRuleNumber $ digestionRule cp
+      putStrLn $ "0" ++ show (U.length iseg)
+      t0 <- getTime
+      putTraceMsg ("iseg Elapsed time: " ++ showTime (Time $ cpuTime t0 - cpuTime t00))
 
-      f  <- GM.new nf               -- maximum number as estimated above, trim later
-      fs <- GM.new (ns+1)           -- include the zero index
+      CUDA.withVector ions $ \d_ions -> do
+        putStrLn "1"
+        t1 <- getTime
+        putTraceMsg ("ions Elapsed time: " ++ showTime (Time $ cpuTime t1 - cpuTime t0))
 
-      --
-      -- OPT: make versions that operate directly from (unboxed) streams?
-      --
-      let write !i !v = do GM.unsafeWrite f i v
-                           return (i+1)
+        nf <- countFrags cp ruleNo d_ions (U.length ions) ns
+        let nf' = countFrags_nocuda cp ions ns 
+        putStrLn $ "2 nf_nocuda " ++ (show nf') ++ " nf " ++ (show nf)
+        putStrLn $ "2 nf " ++ (show nf)
+        t2 <- getTime
+        CUDA.sync
+        putTraceMsg ("count frags Elapsed time: " ++ showTime (Time $ cpuTime t2 - cpuTime t1))
 
-      let fill (!i,!n) (!x,!y) = do GM.unsafeWrite fs i (fromIntegral n)
-                                    n' <- foldM write n (digest cp ions (x,y))
-                                    return (i+1, n')
+        t5 <- getTime
+        putStrLn "5"
+        -- With CUDA, digest (no missed cleavages)
+        putTraceMsg ("digesting with CUDA")
+        (nf_noSplice,f_noSplice,fs_noSplice) <- digestCUDA cp d_ions (U.length ions) iseg ns nf ruleNo 
+        --let f_noSplice' = concatMap (\(!x,!y) -> digest_noSplice cp ions (x,y)) (G.toList $ G.zip iseg (G.tail iseg))
+        --let f_noSplice = f_noSplice'
+        putTraceMsg $ show ("cu ", U.length f_noSplice, U.take 5 f_noSplice)
+        --putTraceMsg $ show ("no cu ", length f_noSplice', take 5 f_noSplice')
+        putTraceMsg $ show ("rev cu ", U.length f_noSplice, U.take 5 $ U.reverse f_noSplice)
+        --putTraceMsg $ show ("rev no cu ", length f_noSplice', take 5 $ reverse f_noSplice')
+        --CUDA.sync
+        --putStrLn $ "nf_nosplice " ++ (show nf_noSplice) ++ " len f_nosp " ++ (show $ U.length f_noSplice) ++ " len fs_nos " ++ (show $ U.length fs_noSplice)
+        t6 <- getTime
 
-      --
-      -- Now iterate over all of the protein sequences, keeping track of the segment
-      -- number and number of fragments generated so far, so we can also fill in the
-      -- fragment segmenting information.
-      --
-      nf' <- snd <$> G.foldM' fill (0,0) (G.zip iseg (G.tail iseg))
-      GM.unsafeWrite fs ns (fromIntegral nf')
+        putTraceMsg ("digest Elapsed time: " ++ showTime (Time $ cpuTime t6 - cpuTime t5))
+      
+        ---- splice and filter each protein group filling fs at the same time
+        f  <- GM.new nf      -- maximun number as estimated above, trim later
+        fs <- GM.new (ns+1)  -- include the zero index
+        --let write !i !v = do GM.unsafeWrite f i v
+                             --return (i+1)
 
-      f'  <- G.unsafeFreeze (GM.take nf' f)
-      fs' <- G.unsafeFreeze fs
+        --let fill (!i,!n) (!x,!y) = do GM.unsafeWrite fs i (fromIntegral n)
+                                      --n' <- foldM write n (spliceFrags cp f_noSplice (x,y))
+                                      --return (i+1, n')
 
-      return $ SeqDB hdr ions iseg f' fs'
+        --putTraceMsg ("fillin'")
+        --nf' <- snd <$> G.foldM' fill (0,0) (G.zip fs_noSplice (G.tail fs_noSplice))
+        --GM.unsafeWrite fs ns (fromIntegral nf')
+        --putTraceMsg ("freezin'")
+
+
+        let nf' = 0
+        f'  <- G.unsafeFreeze (GM.take nf' f)
+        fs' <- G.unsafeFreeze fs
+
+        --putTraceMsg ("nf' " ++ show nf')
+        --t6 <- getTime
+
+        --putTraceMsg ("splicing Elapsed time: " ++ showTime (Time $ cpuTime t6 - cpuTime t5))
+
+        return $ SeqDB hdr ions iseg f' fs'
+{-
+        --
+        -- OPT: make versions that operate directly from (unboxed) streams?
+        --
+        let write !i !v = do GM.unsafeWrite f i v
+                             return (i+1)
+
+        let fill (!i,!n) (!x,!y) = do GM.unsafeWrite fs i (fromIntegral n)
+                                      n' <- foldM write n (digest cp ions (x,y))
+                                      return (i+1, n')
+
+        --
+        -- Now iterate over all of the protein sequences, keeping track of the segment
+        -- number and number of fragments generated so far, so we can also fill in the
+        -- fragment segmenting information.
+        --
+        t5 <- getTime
+        nf' <- snd <$> G.foldM' fill (0,0) (G.zip iseg (G.tail iseg))
+        GM.unsafeWrite fs ns (fromIntegral nf')
+        putStrLn "5"
+
+        f'  <- G.unsafeFreeze (GM.take nf' f)
+        fs' <- G.unsafeFreeze fs
+        t6 <- getTime
+
+        putTraceMsg ("digest Elapsed time: " ++ showTime (Time $ cpuTime t6 - cpuTime t5))
+        return $ SeqDB hdr ions iseg f' fs'
+-}
 
 
 --
@@ -317,13 +381,21 @@ withDevModInfo ddb hmi action =
 -- The latter accounts for a rather small discrepancy (<1%), while the former
 -- may result in significant overestimation (>10%).
 --
-countFrags :: ConfigParams -> U.Vector Word8 -> Int
+-- Max frags = num cleavage sites * (1 + missed cleavages) + (num proteins - 1)
+-- Note: (num proteins - 1) is added because aa is a list of concatenated proteins
+--
+countFrags :: ConfigParams -> Int -> CUDA.DevicePtr Word8 -> Int -> Int -> IO Int
 {-# INLINE countFrags #-}
-countFrags cp aa = (missedCleavages cp + 1) * count aa
-  where
-    rule  = fst (digestionRule cp) . w2c
-    count = U.length . U.filter rule
+countFrags cp ruleNo aa aalen numProt = do
+  count <- CUDA.countAA aa aalen ruleNo
+  return $ (missedCleavages cp + 1) * count + (numProt - 1)
 
+countFrags_nocuda :: ConfigParams -> U.Vector Word8 -> Int -> Int
+{-# INLINE countFrags_nocuda #-}
+countFrags_nocuda cp aa numProt = (missedCleavages cp + 1) * count aa + (numProt - 1)
+  where
+    rule = fst (digestionRule cp) . w2c
+    count = U.length . U.filter rule
 
 --
 -- Extract sequence headers
@@ -345,13 +417,38 @@ ionSeq n db
   = G.unstream
   $ S.fromList (concatMap (L.unpack . F.seqdata) db) `S.sized` S.Exact n
 
-
 ionSeg :: Int -> [Protein] -> U.Vector Word32
 {-# INLINE ionSeg #-}
 ionSeg n db
   = G.unstream
   $ S.fromList (scanl (+) 0 $ map (fromIntegral . L.length . F.seqdata) db) `S.sized` S.Exact (n+1)
 
+digestCUDA :: ConfigParams 
+           -> CUDA.DevicePtr Word8 
+           -> Int 
+           -> U.Vector Word32
+           -> Int 
+           -> Int 
+           -> Int 
+           -> IO (Int, U.Vector (Float,Word32,Word32), U.Vector Int)
+digestCUDA cp d_ions nions iseg ns nf ruleNo = 
+  let mt = aaMassTable cp
+  in
+  CUDA.allocaArray nf   $ \d_r ->
+  CUDA.allocaArray nf   $ \d_c ->
+  CUDA.allocaArray nf   $ \d_n ->
+  CUDA.allocaArray ns   $ \d_fs ->
+  CUDA.withVector  mt   $ \d_mt ->
+  CUDA.withVector  iseg $ \d_iseg -> do
+    nf <- CUDA.digest d_ions nions d_iseg ns nf d_mt ruleNo d_r d_c d_n d_fs 
+
+    r  <- CUDA.peekListArray nf d_r
+    c  <- CUDA.peekListArray nf d_c
+    n  <- CUDA.peekListArray nf d_n
+    fs_noSplice' <- CUDA.peekListArray ns d_fs
+    let f_noSplice  = U.fromList $ zip3 r c n
+        fs_noSplice = U.map fromIntegral $ U.fromList fs_noSplice'
+    return (nf, f_noSplice, fs_noSplice)
 
 --
 -- Digest a single protein sequence with the given enzyme and cleavage rules,
@@ -361,13 +458,18 @@ ionSeg n db
 -- mass of the water molecule released in forming the peptide bond (plus one;
 -- from Eq. 1 of Eng.[1])
 --
-digest :: ConfigParams -> U.Vector Word8 -> (Word32,Word32) -> [(Float,Word32,Word32)]
-{-# INLINE digest #-}
-digest cp ions (!x,!y) = filter (inrange . fst3) . splice cp . fragment cp x $ segment
+{-digest :: ConfigParams -> U.Vector Word8 -> (Word32,Word32) -> [(Float,Word32,Word32)]-}
+{-[># INLINE digest #<]-}
+{-digest cp ions (!x,!y) = filter (inrange . fst3) . splice cp . fragment cp x $ segment-}
+  {-where-}
+    {-segment   = G.unsafeSlice (fromIntegral x) (fromIntegral (y-x)) ions-}
+    {-inrange m = let m' = m + massH2O + massH-}
+                {-in  minPeptideMass cp <= m' && m' <= maxPeptideMass cp-}
+digest_noSplice :: ConfigParams -> U.Vector Word8 -> (Word32,Word32) -> [(Float,Word32,Word32)]
+{-# INLINE digest_noSplice #-}
+digest_noSplice cp ions (!x,!y) = fragment cp x $ segment
   where
     segment   = G.unsafeSlice (fromIntegral x) (fromIntegral (y-x)) ions
-    inrange m = let m' = m + massH2O + massH
-                in  minPeptideMass cp <= m' && m' <= maxPeptideMass cp
 
 --
 -- Split a protein sequence with the given digestion rule. This outputs the
@@ -389,6 +491,15 @@ fragment cp gid ions = unfoldr step (gid,ions)
                                      h = U.take (i+1) v
                                      t = U.drop (i+1) v
                                  in Just ((mass h, c, c+n), (c+n+1,t))
+
+spliceFrags :: ConfigParams -> U.Vector (Float,Word32,Word32) -> (Int, Int) -> [(Float,Word32,Word32)] 
+{-# INLINE spliceFrags #-}
+spliceFrags cp f (!beg,!end) = filter (inrange . fst3) . splice cp $ fragments
+  where
+    sublistU b n l = U.drop b $ U.take (b+n) l
+    fragments = U.toList $ sublistU beg (end-beg) f 
+    inrange m = let m' = m + massH2O + massH
+                in  minPeptideMass cp <= m' && m' <= maxPeptideMass cp
 
 
 --

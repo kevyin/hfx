@@ -11,7 +11,7 @@
 
 module Config
   (
-    ConfigParams(..),
+    ConfigParams(..), getDigestionRuleNumber, 
     sequestConfig, readConfig,
     getAAMass,
     getVarMass, getMA, getMA_Mass
@@ -124,10 +124,12 @@ aaIndex aa
     | inRange ('A','Z') aa = index ('A','Z') aa
     | otherwise            = error $ (show aa) ++ " not a valid acid symbol"
 
+-- |modified acids
 {-# INLINE getMA #-}
 getMA :: ConfigParams -> [Char]
 getMA cp = filter (\c -> getVarMass cp c /= 0 ) ['A'..'Z']
 
+-- |modified acid masses
 {-# INLINE getMA_Mass #-}
 getMA_Mass :: ConfigParams -> [Float]
 getMA_Mass cp = U.toList $ U.filter (\m -> m /= 0) $ variableMods cp
@@ -376,11 +378,15 @@ options =
 -- The list of support digestion rules, paired with a description to be output
 -- as part of the help text.
 --
+
 digestionRuleHelp :: String
 digestionRuleHelp = unlines $ "Digestion Rules:" : map (snd . getDigestionRule) [0..13]
 
+--
+-- When modifying they will also need to changed in src/cuda/digest/
+--
 getDigestionRule :: Int -> (Char -> Bool, String)
-getDigestionRule 0  = (const False          , "  0:  No enzyme              0      -           -")
+getDigestionRule 0  = (const False          , "  0.  No enzyme              0      -           -")
 getDigestionRule 1  = ((`elem` "KR")        , "  1.  Trypsin                1      KR          P")
 getDigestionRule 2  = ((`elem` "FWY")       , "  2.  Chymotrypsin           1      FWY         P")
 getDigestionRule 3  = ((== 'R')             , "  3.  Clostripain            1      R           -")
@@ -397,6 +403,13 @@ getDigestionRule 13 = ((`elem` "ALIVKRWFY") , "  13. Elastase/Tryp/Chymo    1   
 
 getDigestionRule _  = error "getDigestionRule: unknown enzyme digestion rule"
 
+-- |getDigestionRuleNumber
+-- requires the description to start with a number ended by a period '.'
+getDigestionRuleNumber :: (Char -> Bool, String) -> Int
+getDigestionRuleNumber dr = 
+  case findIndex (== '.') $ snd dr of
+    Nothing -> error "getDigestionRuleNumber: could not get determine digestion rule No."
+    Just i  -> read $ take i $ snd dr 
 
 --------------------------------------------------------------------------------
 -- Parse a configuration file

@@ -223,6 +223,38 @@ addIons
     const uint32_t      len_spec
 );
 
+/*
+ * count matching acids
+ */
+uint32_t
+countFragByRule
+(
+    const uint8_t       *d_in_raw,
+    const uint32_t      N,
+    const uint32_t      ruleNo
+);
+
+/*
+ * digest proteins by ruleNo
+ */
+uint32_t
+digestByRule
+(
+    const uint8_t       *d_ions_raw,
+    const uint32_t      Ni,             // Number of ions
+    const uint32_t      *d_iseg_raw,    // protein segments in ions
+    const uint32_t      Ns,             // number of segments (proteins)
+    const uint32_t      Nf,             // upper bound on protein frags
+    const float         *d_mass_raw,    // amino acid masses
+    const uint32_t      ruleNo,
+
+    // result vectors
+    float         *d_r_raw,
+    uint32_t      *d_c_raw,
+    uint32_t      *d_n_raw,
+    uint32_t      *d_fs_raw
+);
+
 #if 0
 void
 addIons_inplace
