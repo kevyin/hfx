@@ -55,7 +55,7 @@ import Paths_hfx (version)
 data ConfigParams = ConfigParams
   {
     databasePath        :: Maybe FilePath,  -- Path to the protein database file
-
+    outputPath          :: Maybe FilePath,  -- Path to the output file
     --
     -- Enzyme search parameters
     --
@@ -222,6 +222,7 @@ baseParams :: ConfigParams
 baseParams =  ConfigParams
     {
         databasePath        = Nothing,
+        outputPath          = Nothing,
 
         massTolerance       = 3.0,
         removePrecursorPeak = True,
@@ -283,6 +284,10 @@ options =
     , Option "d" ["database"]
         (ReqArg (\fp cp -> return cp { databasePath = Just fp }) "FILE")
         "Protein database to search"
+        
+    , Option "o" ["output-file"]
+        (ReqArg (\fp cp -> return cp { outputPath = Just fp }) "FILE")
+        "Name of file to write to"
 
     , Option "" ["add_[A..Z]"]
         (ReqArg (\_ cp -> return cp) "FLOAT")

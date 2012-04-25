@@ -36,6 +36,9 @@ import qualified Data.Vector.Generic        as G
 -- this anyway.
 --
 writeIndex :: Handle -> ConfigParams -> SequenceDB -> IO ()
+writeIndex hdl cp db = encodeFile (fromJust $ outputPath cp) db
+{-
+writeIndex :: Handle -> ConfigParams -> SequenceDB -> IO ()
 writeIndex hdl cp db = L.hPut hdl header >> L.hPut hdl content
   where
     content = compress (encode db)
@@ -56,6 +59,8 @@ writeIndex hdl cp db = L.hPut hdl header >> L.hPut hdl content
       if det == 0 then mods
                   else ("add_" ++ [aa] ++ " = " ++ show det) : mods
 
+-}
+
 
 --
 -- Read an indexed sequence database. Update the configuration options with
@@ -64,9 +69,11 @@ writeIndex hdl cp db = L.hPut hdl header >> L.hPut hdl content
 readIndex :: ConfigParams -> FilePath -> IO (ConfigParams, SequenceDB)
 readIndex cp fp = do
   f   <- L.readFile fp
-  let (opt,f',_) = runGetState get f 0
-      db         = decode (decompress f')
-      table      = G.replicate (rangeSize ('A','Z')) 0
+  --let (opt,f',_) = runGetState get f 0
+      --db         = decode (decompress f')
+      --table      = G.replicate (rangeSize ('A','Z')) 0
 
-  (,db) `fmap` readConfig (L.unpack opt) fp (cp {aaMassTable = table, databasePath = Just fp})
+  db         <- decodeFile fp
+  --(,db) `fmap` readConfig (L.unpack opt) fp (cp {aaMassTable = table, databasePath = Just fp})
+  return (cp,db)
 
