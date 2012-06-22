@@ -98,6 +98,7 @@ main = do
 {-# INLINE loadDatabase #-}
 loadDatabase :: ConfigParams -> FilePath -> Int -> IO (ConfigParams, [SequenceDB])
 loadDatabase cp fp split = do
+  putStrLn "Wefwefef"
   (cp',dbs) <- case takeExtensions fp of
     ext | ".fasta" `isPrefixOf` ext -> (cp,) `liftM` makeSeqDB cp fp split
     ext | ".index" `isPrefixOf` ext -> readIndex cp fp >>= \(cp',sdb) -> return (cp',[sdb]) 

@@ -26,6 +26,8 @@ import System.IO
 import qualified Data.ByteString.Lazy.Char8 as L
 import qualified Data.Vector.Generic        as G
 
+import Debug.Trace
+
 
 --
 -- Output the digested sequence database together with the relevant digestion
@@ -73,7 +75,11 @@ readIndex cp fp = do
       --db         = decode (decompress f')
       --table      = G.replicate (rangeSize ('A','Z')) 0
 
+  putTraceMsg "decoding file"
   db         <- decodeFile fp
+  putTraceMsg "decoded file"
+  putTraceMsg $ " dbion length " ++ show (G.length $ dbIon db)
   --(,db) `fmap` readConfig (L.unpack opt) fp (cp {aaMassTable = table, databasePath = Just fp})
+
   return (cp,db)
 
