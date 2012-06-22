@@ -15,13 +15,15 @@ indexFile="$base.index"
 tmpdbFile="tmpdb.out"
 tmpinFile="tmpin.out"
 
-echo "Generating $indexFile"
+echo "----> Generating index db: $indexFile"
 time ./dist/build/generate-peptides/generate-peptides -v -p hfx.params -d $dbFile -o $indexFile
 
-echo "running normal database to $tmpdbFile"
+echo "----> running normal database to $tmpdbFile"
 time ./dist/build/hfx/hfx -v -p hfx.params -d $dbFile ./tests/data/test.dta > $tmpdbFile
 
-echo "running normal database to $tmpinFile"
+echo "----> running indexed database to $tmpinFile"
 time ./dist/build/hfx/hfx -v -p hfx.params -d $indexFile ./tests/data/test.dta > $tmpinFile
+
+
 
 diff $tmpdbFile $tmpinFile
