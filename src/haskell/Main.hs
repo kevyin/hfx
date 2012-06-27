@@ -121,6 +121,7 @@ search cp db hmi dmi dev fp =
         hPutStrLn stderr $ " # peptides:    " ++ (show . G.length . dbFrag   $ db)
 
       allMatches <- forM d $ \ms2 -> do
+        hPutStrLn stderr $ " searching scan: " ++ (show $ ms2info ms2)
         matches <- searchForMatches cp db dev hmi dmi ms2
         return $ map (\m -> (fp, ms2, m)) matches
         `catch`

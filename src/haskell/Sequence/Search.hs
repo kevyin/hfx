@@ -81,20 +81,17 @@ type SearchSection = (Int, Int)
 --
 searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
 searchForMatches cp sdb ddb hmi dmi ms2 = do
-  putTraceMsg $ " dbion length " ++ show (G.length $ dbIon sdb)
-  return []
+  --putTraceMsg $ " dbion length " ++ show (G.length $ dbIon sdb)
+  --return []
   (t,matches) <- bracketTime $ searchWithoutMods cp sdb ddb ms2 
   --when (verbose cp) $ hPutStrLn stderr ("Search Without Modifications Elapsed time: " ++ showTime t)
 
-  return $ sortBy matchScoreOrder $ matches
-{-
   (t2,matchesMods) <- bracketTime $ case dmi of
                     NoDMod -> return []
                     _      -> searchWithMods cp sdb ddb hmi dmi ms2 
   --when (verbose cp) $ hPutStrLn stderr ("Search With Modifications Elapsed time: " ++ showTime t2)
 
   return $ sortBy matchScoreOrder $ matches ++ matchesMods
--}
 
 --
 -- |Search without modifications
