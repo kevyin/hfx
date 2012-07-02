@@ -1,5 +1,5 @@
 Name:                hfx
-Version:             0.1
+Version:             0.1.0.1
 Synopsis:            An implementation of the SEQUEST algorithm for protein identification
 Description:
     An implementation of the SEQUEST algorithm on NVIDIA GPUs, for fast
