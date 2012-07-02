@@ -39,6 +39,13 @@ findIndicesInRange_f
     const float         max_val
 )
 {
+#ifdef _BENCH
+    std::cerr << "findIndicesInRange_f" << std::endl;
+    cudaThreadSynchronize();
+    time_t t_beg, t_end;
+    time(&t_beg);
+#endif 
+
     thrust::device_ptr<const float>     d_in(d_in_raw);
     thrust::device_ptr<uint32_t>        d_indices(d_indices_raw);
 
@@ -49,6 +56,12 @@ findIndicesInRange_f
     // compute indices of elements in range
     thrust::device_ptr<uint32_t> indices_end =
         thrust::copy_if(first, last, d_in, d_indices, interval<const float>(min_val, max_val));
+
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time(&t_end);
+    std::cerr<< "Time elapsed for findIndicesInRange_f : " << difftime(t_end,t_beg) << " seconds" << std::endl;
+#endif 
 
     return indices_end - d_indices;
 }

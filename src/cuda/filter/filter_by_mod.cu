@@ -568,7 +568,7 @@ findBeginEnd_f
 #ifdef _BENCH
     cudaThreadSynchronize();
     time(&t_end);
-    printf ("Time elapsed for findBeginEnd_f: %.2lf seconds\n", difftime(t_end,t_beg));
+    std::cerr << "Time elapsed for findBeginEnd_f: " << difftime(t_end,t_beg) << " %.2lf seconds\n" << std::endl;
 #endif 
     // return total peptides
     return total;
@@ -823,8 +823,13 @@ findModablePeptides
     const uint32_t      num_ma
 )
 {
-    //std::cout << "findModablePeptides" << std::endl;
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    std::cerr<< "findModablePeptides" << std::endl;
+    time_t t_beg, t_end;
+    time(&t_beg);
     //printGPUMemoryUsage();
+#endif 
 
     thrust::device_ptr<uint32_t> d_out_valid(d_out_valid_raw);
     thrust::device_ptr<uint32_t> d_out_pep_ma_count(d_out_pep_ma_count_raw);
@@ -886,6 +891,12 @@ findModablePeptides
         /*}*/
         /*std::cout << std::endl;*/
     /*}  */
+
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time(&t_end);
+    std::cerr << "Time elapsed for findModablePeptides: " << difftime(t_end,t_beg) << "%.2lf seconds\n" << std::endl; 
+#endif 
 
     return numValid;
 }

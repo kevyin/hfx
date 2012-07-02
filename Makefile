@@ -36,3 +36,4 @@ clobber : $(addsuffix .do,$(PROJECTS))
 
 cudabrush:
 	rm ./dist/build/hfx/hfx-tmp/Foreign/CUDA/Algorithms.o
+	rm ./dist/build/hfx/hfx-tmp/Foreign/CUDA/Util.o

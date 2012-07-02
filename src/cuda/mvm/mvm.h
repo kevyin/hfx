@@ -19,6 +19,12 @@
 #define MAX_BLOCKS      undefined
 #define WARP_SIZE       32
 
+/*
+ * Takn from CUBLAS API manual
+ * cublas matrices do not use 0 based indices and are column major
+ */
+#define IDX2C(i,j,Id) (((j)*(Id))+(i))
+
 #endif
 
 

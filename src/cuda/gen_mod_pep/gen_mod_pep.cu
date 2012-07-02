@@ -251,12 +251,12 @@ genModCands
 )
 {
 #ifdef _BENCH
+    std::cout << "gen_mod_pep" << std::endl;
     cudaThreadSynchronize();
     time_t t_beg, t_end;
     time(&t_beg);
-#endif 
-    //std::cout << "gen_mod_pep" << std::endl;
     //printGPUMemoryUsage();
+#endif 
 
 /*
     std::cout << "num_mpep " << num_mpep << std::endl;
