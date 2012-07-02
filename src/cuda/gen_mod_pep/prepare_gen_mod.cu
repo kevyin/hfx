@@ -100,12 +100,12 @@ prepareGenMod
 )
 {
 #ifdef _BENCH
+    std::cout << "prepareGenMod" << std::endl;
     cudaThreadSynchronize();
     time_t t_beg, t_end;
     time(&t_beg);
 #endif 
 
-    //std::cout << "prepareGenMod" << std::endl;
     //printGPUMemoryUsage();
 
     thrust::device_ptr<const uint32_t> d_pep_num_mpep_th(d_pep_num_mpep);

@@ -149,11 +149,11 @@ calcTotalModCands
 
 #ifdef _BENCH
     cudaThreadSynchronize();
+    std::cout << "calcTotalModCands" << std::endl;
     time_t t_beg, t_end;
     time(&t_beg);
 #endif 
 
-    //std::cout << "calcTotalModCands" << std::endl;
     //printGPUMemoryUsage();
     // initialise thrust ptrs
     thrust::device_ptr<uint32_t>        d_out_pep_num_mpep(d_out_pep_num_mpep_raw);

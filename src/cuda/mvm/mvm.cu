@@ -4,6 +4,8 @@
  * Copyright : (c) [2009..2010] Trevor L. McDonell
  * License   : BSD
  *
+ * KNOWN BUG: mvm_if messes things up on GTX460 768MB
+ *            cudamemgetinfo becomes unusable, failure occurs in the next sort.cu 
  * ---------------------------------------------------------------------------*/
 
 #include "mvm.h"
@@ -12,6 +14,7 @@
 #include "algorithms.h"
 
 #include <stdint.h>
+/*#include <cublas_v2.h>*/
 
 #if 0
 __device__ static float
@@ -178,6 +181,23 @@ mvm
 void
 mvm_if(float *d_y, const uint32_t *d_A, const float *d_x, const uint32_t m, const uint32_t n)
 {
+    /*printGPUMemoryUsage();*/
     mvm<true>(d_y, d_A, d_x, m, n);
+    /*printGPUMemoryUsage();*/
 }
 
+/*
+void
+mvm_if_cublas(float *d_y, const uint32_t *d_A, const float *d_x, const uint32_t m, const uint32_t n)
+{                     
+
+    cublasHandle_t handle;
+    cublasStatus_t stat;
+    float alpha = 1.0;
+    float beta = 0.0;
+
+    cublasCreate(&handle);
+    cublasSgemv(handle, CUBLAS_OP_T, m, n, 0, d_A, m, d_x, 0, 1, d_y, 0);
+    cublasDestroy(handle);
+}
+*/
