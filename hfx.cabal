@@ -52,8 +52,10 @@ Executable hfx
                        zlib                     >= 0.5 && < 0.6
 
   ghc-options:         -Wall -O2 -fwarn-tabs -fno-spec-constr
-  extra-libraries:     stdc++
+  extra-libraries:     stdc++ cublas
   extra-lib-dirs:      dist/lib
+                       /usr/local/cuda/lib64
+                       /usr/local/cuda/lib
 
   include-dirs:        src/common/include
 
@@ -76,7 +78,7 @@ Executable generate-peptides
                        vector-binary-instances  >= 0.1 && < 0.2
 
   ghc-options:         -Wall -O2 -fno-spec-constr
-  extra-libraries:     stdc++
+  extra-libraries:     stdc++ cublas
   extra-lib-dirs:      dist/lib
 
   include-dirs:        src/common/include

@@ -14,7 +14,8 @@
 #include "algorithms.h"
 
 #include <stdint.h>
-/*#include <cublas_v2.h>*/
+#include <thrust/device_vector.h>
+#include "cublas_v2.h"
 
 #if 0
 __device__ static float
@@ -173,7 +174,6 @@ mvm
         unbind_x(d_x);
 }
 
-
 /* -----------------------------------------------------------------------------
  * Instances
  * ---------------------------------------------------------------------------*/
@@ -187,14 +187,31 @@ mvm_if(float *d_y, const uint32_t *d_A, const float *d_x, const uint32_t m, cons
     time(&t_beg);
     std::cerr << "mvm_if" << std::endl;
 #endif
+
+    cublasHandle_t handle;
+    cublasCreate(&handle);
+    float alpha = 1.0;
+    float beta = 0.0;
+
+    thrust::device_ptr<const uint32_t> d_A_th(d_A);
+
+    thrust::device_vector<float> d_A_f_th(d_A_th, d_A_th + m*n);
+
+    // Because cublas uses col major storage (we use row major) swap row and col values and use CUBLAS_OP_T 
+    cublasSgemv(handle, CUBLAS_OP_T, n, m, &alpha, d_A_f_th.data().get(), n, d_x, 1, &beta, d_y, 1);
+
+    cublasDestroy(handle);
+
+
     /*printGPUMemoryUsage();*/
-    mvm<true>(d_y, d_A, d_x, m, n);
+    /*mvm<true>(d_y, d_A, d_x, m, n);*/
     /*printGPUMemoryUsage();*/
 #ifdef _BENCH
     cudaThreadSynchronize();
     time(&t_end);
     std::cerr<< "Time elapsed for mvm_if: " << difftime(t_end,t_beg) << " seconds" << std::endl;
 #endif
+
 }
 
 /*
