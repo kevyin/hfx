@@ -181,9 +181,20 @@ mvm
 void
 mvm_if(float *d_y, const uint32_t *d_A, const float *d_x, const uint32_t m, const uint32_t n)
 {
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time_t t_beg, t_end;
+    time(&t_beg);
+    std::cerr << "mvm_if" << std::endl;
+#endif
     /*printGPUMemoryUsage();*/
     mvm<true>(d_y, d_A, d_x, m, n);
     /*printGPUMemoryUsage();*/
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time(&t_end);
+    std::cerr<< "Time elapsed for mvm_if: " << difftime(t_end,t_beg) << " seconds" << std::endl;
+#endif
 }
 
 /*
