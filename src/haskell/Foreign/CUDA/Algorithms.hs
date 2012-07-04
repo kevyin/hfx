@@ -180,7 +180,7 @@ genModCands a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 =
 foreign import ccall unsafe "algorithms.h genModCands"
   genModCands'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Word32 -> IO ()
 
-addModIons :: DevicePtr Word32 
+addModIons :: DevicePtr Float
            -> DevicePtr Float 
            -> DevicePtr Float 
            -> DevicePtr Word8 
@@ -221,9 +221,9 @@ addModIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 
   addModIons'_ a1' a2' a3' a4' a5' a6' a7' a8' a9' a10' (cIntConv a11) (cIntConv a12) a13' a14' a15' a16' (cIntConv a17) (cIntConv a18) (cIntConv a19) (cIntConv a20) (cIntConv a21)
 
 foreign import ccall unsafe "algorithms.h addModIons"
-  addModIons'_ :: Ptr Word32 -> Ptr Float -> Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 ->  Word32 -> Ptr Word32 -> Ptr Float -> Ptr Word8 -> Ptr Float -> Word32 -> Word32 -> Word32 -> Word32 -> Word32 -> IO ()
+  addModIons'_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 ->  Word32 -> Ptr Word32 -> Ptr Float -> Ptr Word8 -> Ptr Float -> Word32 -> Word32 -> Word32 -> Word32 -> Word32 -> IO ()
 
-addIons :: DevicePtr Word32 -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> Int -> Int -> Int -> IO ()
+addIons :: DevicePtr Float -> DevicePtr Float -> DevicePtr Float -> DevicePtr Word8 -> (DevicePtr Word32, DevicePtr Word32) -> DevicePtr Word32 -> Int -> Int -> Int -> IO ()
 addIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 =
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
@@ -235,7 +235,7 @@ addIons a1 a2 a3 a4 (a5,a6) a7 a8 a9 a10 =
   addIons'_ a1' a2' a3' a4' a5' a6' a7' (cIntConv a8) (cIntConv a9) (cIntConv a10)
 
 foreign import ccall unsafe "algorithms.h addIons"
-  addIons'_ :: Ptr Word32 -> Ptr Float -> Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Word32 -> Word32 -> IO ()
+  addIons'_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Word32 -> Word32 -> IO ()
 
 
 #if 0
@@ -283,15 +283,15 @@ foreign import ccall unsafe "algorithms.h sort_rf"
   rsort'_ :: Ptr Float -> Ptr Word32 -> Word32 -> IO ()
 
 
-mvm :: DevicePtr Float -> DevicePtr Word32 -> DevicePtr Float -> Int -> Int -> IO ()
+mvm :: DevicePtr Float -> DevicePtr Float -> DevicePtr Float -> Int -> Int -> IO ()
 mvm a1 a2 a3 a4 a5 =
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
   withDevicePtr a3 $ \a3' ->
   mvm'_ a1' a2' a3' (fromIntegral a4) (fromIntegral a5)
 
-foreign import ccall unsafe "algorithms.h mvm_if"
-  mvm'_ :: Ptr Float -> Ptr Word32 -> Ptr Float -> Word32 -> Word32 -> IO ()
+foreign import ccall unsafe "algorithms.h mvm_ff"
+  mvm'_ :: Ptr Float -> Ptr Float -> Ptr Float -> Word32 -> Word32 -> IO ()
 
 --sum_Word32 :: DevicePtr Word32 -> Int -> IO Int
 --sum_Word32 a1 a2 =

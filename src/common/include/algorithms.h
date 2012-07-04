@@ -177,7 +177,7 @@ genModCands
 
 void addModIons
 (
-    uint32_t            *d_out_mspec,
+    float               *d_out_mspec,
     const float         *d_residual,    // peptide residual mass
     const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
     const uint8_t       *d_ions,        // individual ion character codes (the database)
@@ -211,7 +211,7 @@ void addModIons
 void
 addIons
 (
-    uint32_t            *d_spec,
+    float               *d_spec,
     const float         *d_residual,
     const float         *d_mass,
     const uint8_t       *d_ions,
@@ -243,7 +243,8 @@ addIons_inplace
 /*
  * Dense matrix-vector multiplication
  */
-void mvm_if(float *d_y, const uint32_t *d_A, const float *d_x, const uint32_t m, const uint32_t n);
+//void mvm_if(float *d_y, const uint32_t *d_A, const float *d_x, const uint32_t m, const uint32_t n);
+void mvm_ff(float *d_y, const float *d_A, const float *d_x, const uint32_t m, const uint32_t n);
 
 /*
  * reduce a word32 array

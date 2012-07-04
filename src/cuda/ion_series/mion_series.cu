@@ -175,7 +175,7 @@ template <uint32_t BlockSize, uint32_t MaxCharge, bool UseCache, uint32_t NumMA>
 __global__ static void
 addModIons_core
 (
-    uint32_t            *d_mspec,
+    float               *d_mspec,
     uint8_t             *d_mions,       // For debugging, records ions in char form
     const float         *d_residual,    // peptide residual mass
     const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
@@ -202,6 +202,7 @@ addModIons_core
 
     const uint32_t vectorsPerBlock = BlockSize / WARP_SIZE;
     const uint32_t numVectors      = vectorsPerBlock * gridDim.x;
+    const uint32_t numThreads      = BlockSize * gridDim.x;
     const uint32_t thread_id       = BlockSize * blockIdx.x + threadIdx.x;
     const uint32_t vector_id       = thread_id / WARP_SIZE;
     const uint32_t thread_lane     = threadIdx.x & (WARP_SIZE-1);
@@ -224,7 +225,7 @@ addModIons_core
         const uint32_t row_end   = d_tn[pep_idx];
         const float    residual  = d_residual[pep_idx] + d_mod_delta[mod_idx];
 
-        uint32_t       *spec     = &d_mspec[row * len_spec];
+        uint32_t       *spec     = (uint32_t*) &d_mspec[row * len_spec];
         float          b_mass;
         float          y_mass;
 
@@ -305,6 +306,25 @@ addModIons_core
             if (4 <= MaxCharge) addIons_k<4>(spec, len_spec, b_mass, y_mass);
         }
     }
+
+    __syncthreads();
+    // Now convert everything in spectrum as float
+    float* d_spec = d_mspec;
+    size_t pos;
+    size_t len_d_spec = num_mpep*len_spec;
+    for (int i = 0; i < len_d_spec / numThreads; ++i) 
+    {
+        pos = i*numThreads + thread_id;
+        d_spec[pos] = __int2float_rn(__float_as_int(d_spec[pos]));
+    }
+
+    size_t remainder = len_d_spec % numThreads;
+
+    if (thread_id < remainder) 
+    {
+        pos = len_d_spec - remainder + thread_id;
+        d_spec[pos] = __int2float_rn(__float_as_int(d_spec[pos]));
+    }
 }
 
 
@@ -324,7 +344,7 @@ template <uint32_t MaxCharge, bool UseCache, uint32_t NumMA>
 static void
 addModIons_dispatch
 (
-    uint32_t            *d_mspec,
+    float               *d_mspec,
     uint8_t             *d_mions,       // For debugging, records ions in char form
     const float         *d_residual,    // peptide residual mass
     const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
@@ -373,7 +393,7 @@ template <uint32_t NumMA>
 static void
 addModIons_dispatch_max_charge
 (
-    uint32_t            *d_mspec,
+    float               *d_mspec,
     uint8_t             *d_mions,       // For debugging, records ions in char form
     const float         *d_residual,    // peptide residual mass
     const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
@@ -418,7 +438,7 @@ addModIons_dispatch_max_charge
 
 void addModIons
 (
-    uint32_t            *d_out_mspec,
+    float               *d_out_mspec,
     const float         *d_residual,    // peptide residual mass
     const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
     const uint8_t       *d_ions,        // individual ion character codes (the database)
@@ -450,14 +470,14 @@ void addModIons
 #ifdef _BENCH
     time_t t_beg, t_end;
     time(&t_beg);
+    std::cout << "mion_series" << std::endl;
+    printGPUMemoryUsage();
 #endif 
 
     const uint32_t *d_mpep_pep_idx = start + _d_mpep_pep_idx;
     const uint32_t *d_mpep_pep_mod_idx = start + _d_mpep_pep_mod_idx;
     const uint32_t *d_mpep_mod_ma_count_sum_scan = start + _d_mpep_mod_ma_count_sum_scan;
     const uint32_t num_mpep = nsearch;
-    //std::cout << "mion_series" << std::endl;
-    //printGPUMemoryUsage();
 
 #ifdef DEBUG
     thrust::device_vector<uint8_t> d_mions_v(MAX_PEP_LEN*num_mpep);
@@ -488,8 +508,8 @@ void addModIons
     // NB currently only allows 1 alternative mass for an acid. lowercase is used for the modified mass
     
     printGPUMemoryUsage();
-    std::cout << "to alloc " << len_spec*num_mpep*sizeof(uint32_t) << std::endl;
-    thrust::device_vector<uint32_t> d_out_check_spec(len_spec*num_mpep);
+    std::cout << "to alloc " << len_spec*num_mpep*sizeof(float) << std::endl;
+    thrust::device_vector<float> d_out_check_spec(len_spec*num_mpep);
     std::cout << "475" << std::endl;
     getSpecNonParallel(d_out_check_spec.data().get(),
                      d_mions.get(),
@@ -504,7 +524,7 @@ void addModIons
     std::cout << "485" << std::endl;
 
     // compare
-    thrust::device_ptr<uint32_t> d_out_mspec_th(d_out_mspec);
+    thrust::device_ptr<float> d_out_mspec_th(d_out_mspec);
     if (!thrust::equal(d_out_check_spec.begin(), d_out_check_spec.end(), d_out_mspec_th)) {
         std::cerr << "Spectrums doesn't seem to be correct" << std::endl;
 
@@ -531,6 +551,7 @@ void addModIons
 #ifdef _BENCH
     time(&t_end);
     printf ("Time elapsed for addModIons: %.2lf seconds\n", difftime(t_end,t_beg));
+    printGPUMemoryUsage();
 #endif 
 
 }

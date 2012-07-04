@@ -65,7 +65,7 @@ type CandidatesModable = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Wor
 type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, Int)
 
 -- |A device pointer to a theoretical spectrum
-type IonSeries  = DevicePtr Word32
+type IonSeries  = DevicePtr Float
 
 -- |A section (after a split) of the database to be searched 
 -- (start index to (r,c,n), num elements in section)

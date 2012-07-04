@@ -107,7 +107,7 @@ genMIons
  */
 void
 getSpecNonParallel(
-    uint32_t            *d_out_check_spec, 
+    float               *d_out_check_spec, 
     const uint8_t       *d_in_mions, 
     const float         *d_residual_raw, 
     const float         *d_mass_raw, 

@@ -151,7 +151,7 @@ template <uint32_t BlockSize, uint32_t MaxCharge, bool UseCache>
 __global__ static void
 addIons_core
 (
-    uint32_t            *d_spec,
+    float               *d_spec,
     const float         *d_residual,    // peptide residual mass
     const float         *d_mass,        // lookup table for ion character codes ['A'..'Z']
     const uint8_t       *d_ions,        // individual ion character codes (the database)
@@ -166,6 +166,7 @@ addIons_core
 
     const uint32_t vectorsPerBlock = BlockSize / WARP_SIZE;
     const uint32_t numVectors      = vectorsPerBlock * gridDim.x;
+    const uint32_t numThreads      = BlockSize * gridDim.x;
     const uint32_t thread_id       = BlockSize * blockIdx.x + threadIdx.x;
     const uint32_t vector_id       = thread_id / WARP_SIZE;
     const uint32_t thread_lane     = threadIdx.x & (WARP_SIZE-1);
@@ -179,7 +180,7 @@ addIons_core
         const uint32_t row_end   = d_tn[idx];
         const float    residual  = d_residual[idx];
 
-        uint32_t       *spec     = &d_spec[row * len_spec];
+        uint32_t       *spec     = (uint32_t*) &d_spec[row * len_spec];
         float          b_mass;
         float          y_mass;
 
@@ -204,12 +205,29 @@ addIons_core
              */
             b_mass = scan_warp<float,true>(b_mass, s_data);
             y_mass = residual - b_mass;
-
+                     
             if (1 <= MaxCharge) addIons_k<1>(spec, len_spec, b_mass, y_mass);
             if (2 <= MaxCharge) addIons_k<2>(spec, len_spec, b_mass, y_mass);
             if (3 <= MaxCharge) addIons_k<3>(spec, len_spec, b_mass, y_mass);
             if (4 <= MaxCharge) addIons_k<4>(spec, len_spec, b_mass, y_mass);
         }
+    }
+
+    __syncthreads();
+    // Now convert everything in spectrum as float
+    size_t pos;
+    size_t len_d_spec = num_idx*len_spec;
+    for (int i = 0; i < len_d_spec / numThreads; ++i) 
+    {
+        pos = i*numThreads + thread_id;
+        d_spec[pos] = __int2float_rn(__float_as_int(d_spec[pos]));
+    }
+
+    size_t remainder = len_d_spec % numThreads;
+    if (thread_id < remainder) 
+    {
+        pos = len_d_spec - remainder + thread_id;
+        d_spec[pos] = __int2float_rn(__float_as_int(d_spec[pos]));
     }
 }
 
@@ -231,7 +249,7 @@ template <uint32_t MaxCharge, bool UseCache>
 static void
 addIons_dispatch
 (
-    uint32_t            *d_spec,
+    float               *d_spec,
     const float         *d_residual,
     const float         *d_mass,
     const uint8_t       *d_ions,
@@ -268,7 +286,7 @@ addIons_dispatch
 void
 addIons
 (
-    uint32_t            *d_spec,
+    float               *d_spec,
     const float         *d_residual,
     const float         *d_mass,
     const uint8_t       *d_ions,
