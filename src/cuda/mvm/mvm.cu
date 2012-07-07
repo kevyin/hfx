@@ -29,7 +29,6 @@ mvm_ff(float *d_y, const float *d_A, const float *d_x, const uint32_t m, const u
 #endif
     cublasHandle_t handle;
     cublasCreate(&handle);
-    cublasCreate(&handle);
     float alpha = 1.0;
     float beta = 0.0;
 
