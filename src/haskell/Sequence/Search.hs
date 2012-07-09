@@ -50,6 +50,7 @@ import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
 import qualified Foreign.CUDA.Algorithms        as CUDA
 import Foreign.CUDA.Driver.Marshal (getMemInfo)
+import qualified Foreign.CUDA.BLAS                        as CUBLAS
 
 import Debug.Trace
 
@@ -315,7 +316,10 @@ sequestXC cp ep (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatc
 
     -- Score and rank each candidate sequence
     --
-    CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr nIdx (G.length expr)
+    --CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr nIdx (G.length expr)
+    let m = nIdx
+        n = G.length expr
+    CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1
     CUDA.rsort d_score d_idx nIdx
 
     -- Retrieve the most relevant matches
