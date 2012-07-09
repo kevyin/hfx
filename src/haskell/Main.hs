@@ -20,6 +20,7 @@ import Spectrum
 import Util.Time
 import Util.Show
 import Util.PrettyPrint
+import Execution                        (withExecutionPlan)
 
 --
 -- System libraries
@@ -113,7 +114,7 @@ search :: ConfigParams -> SequenceDB -> HostModInfo -> DeviceModInfo ->  DeviceS
 search cp db hmi dmi dev fp =
   readMS2Data fp >>= \r -> case r of
     Left  s -> hPutStrLn stderr s >>= \_ -> return []
-    Right d -> do 
+    Right d -> withExecutionPlan $ \ep -> do
       when (verbose cp) $ do
         --hPutStrLn stderr $ "Database: " ++ fp
         hPutStrLn stderr $ " # amino acids: " ++ (show . G.length . dbIon    $ db)
@@ -122,7 +123,7 @@ search cp db hmi dmi dev fp =
 
       allMatches <- forM d $ \ms2 -> do
         hPutStrLn stderr $ " searching scan: " ++ (show $ ms2info ms2)
-        matches <- searchForMatches cp db dev hmi dmi ms2
+        matches <- searchForMatches cp ep db dev hmi dmi ms2
         return $ map (\m -> (fp, ms2, m)) matches
         `catch`
         \(e :: SomeException) -> do 

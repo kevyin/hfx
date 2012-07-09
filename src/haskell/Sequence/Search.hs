@@ -33,6 +33,7 @@ import Sequence.IonSeries
 import Util.Misc                                hiding (sublist)
 import Util.C2HS
 import Util.Time
+import Execution                                
 
 import Data.Word
 import Data.Maybe
@@ -79,16 +80,16 @@ type SearchSection = (Int, Int)
 -- |Search an amino acid sequence database to find the most likely matches to a
 -- given experimental spectrum.
 --
-searchForMatches :: ConfigParams -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
-searchForMatches cp sdb ddb hmi dmi ms2 = do
+searchForMatches :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
+searchForMatches cp ep sdb ddb hmi dmi ms2 = do
   --putTraceMsg $ " dbion length " ++ show (G.length $ dbIon sdb)
   --return []
-  (t,matches) <- bracketTime $ searchWithoutMods cp sdb ddb ms2 
+  (t,matches) <- bracketTime $ searchWithoutMods cp ep sdb ddb ms2 
   --when (verbose cp) $ hPutStrLn stderr ("Search Without Modifications Elapsed time: " ++ showTime t)
 
   (t2,matchesMods) <- bracketTime $ case dmi of
                     NoDMod -> return []
-                    _      -> searchWithMods cp sdb ddb hmi dmi ms2 
+                    _      -> searchWithMods cp ep sdb ddb hmi dmi ms2 
   --when (verbose cp) $ hPutStrLn stderr ("Search With Modifications Elapsed time: " ++ showTime t2)
 
   return $ sortBy matchScoreOrder $ matches ++ matchesMods
@@ -96,11 +97,11 @@ searchForMatches cp sdb ddb hmi dmi ms2 = do
 --
 -- |Search without modifications
 --
-searchWithoutMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
-searchWithoutMods cp sdb ddb ms2 =
+searchWithoutMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
+searchWithoutMods cp ep sdb ddb ms2 =
   filterCandidateByMass cp ddb mass                                   $ \candidatesByMass ->
   mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)          $ \specThry   -> do
-  mapMaybe finish `fmap` sequestXC cp candidatesByMass spec specThry
+  mapMaybe finish `fmap` sequestXC cp ep candidatesByMass spec specThry
   where
     spec          = sequestXCorr cp ms2
     peaks         = extractPeaks spec
@@ -112,14 +113,14 @@ searchWithoutMods cp sdb ddb ms2 =
 --
 -- |Search with modifications
 --
-searchWithMods :: ConfigParams -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
-searchWithMods cp sdb ddb hmi dmi ms2 = 
+searchWithMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
+searchWithMods cp ep sdb ddb hmi dmi ms2 = 
   let mass = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
   in
   filterCandidateByModMass cp ddb dmi mass $ \candsByModMass -> 
   filterCandidatesByModability cp ddb dmi candsByModMass $ \candsByMassAndMod -> 
   genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands -> 
-  mapMaybe finish `fmap` scoreModCandidates cp ddb hmi dmi modifiedCands (ms2charge ms2) (G.length spec) spec
+  mapMaybe finish `fmap` scoreModCandidates cp ep ddb hmi dmi modifiedCands (ms2charge ms2) (G.length spec) spec
   
   where
     spec          = sequestXCorr cp ms2
@@ -224,8 +225,8 @@ genModCandidates cp ddb dmi (num_pep, d_pep_valid_idx, d_pep_idx, d_pep_mod_idx,
 -- |Score modified peptides by generating spectrums an then scoring them.
 -- Will calculate remaining memory and split the work so device will not run out of memory
 --
-scoreModCandidates :: ConfigParams -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> ModCandidates -> Float -> Int -> Spectrum -> IO [(Float,Int,PepMod,[Int])]
-scoreModCandidates cp ddb hmi dmi mcands chrg len expr = 
+scoreModCandidates :: ConfigParams -> ExecutionPlan -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> ModCandidates -> Float -> Int -> Spectrum -> IO [(Float,Int,PepMod,[Int])]
+scoreModCandidates cp ep ddb hmi dmi mcands chrg len expr = 
   let (num_mpep, _, _, _, _, _) = mcands
 
       -- each modified peptide will need the same amount of memory
@@ -257,7 +258,7 @@ scoreModCandidates cp ddb hmi dmi mcands chrg len expr =
                         {-++ "Number jobs to split into " ++ show split ++ "\n"-}
     liftM concat $ forM sections $ \s -> do
       mkModSpecXCorr ddb dmi mcands chrg len d_mspecThry s
-      sequestXCMod cp hmi mcands expr d_expr d_mspecThry d_score d_mpep_idx s
+      sequestXCMod cp ep hmi mcands expr d_expr d_mspecThry d_score d_mpep_idx s
 
 
 --
@@ -301,8 +302,8 @@ mkSpecXCorr db (nIdx, d_idx) chrg len action =
 -- |Score each candidate sequence against the observed intensity spectra,
 -- returning the most relevant results.
 --
-sequestXC :: ConfigParams -> CandidatesByMass -> Spectrum -> IonSeries -> IO [(Float,Int)]
-sequestXC cp (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatchesDetail cp) in
+sequestXC :: ConfigParams -> ExecutionPlan -> CandidatesByMass -> Spectrum -> IonSeries -> IO [(Float,Int)]
+sequestXC cp ep (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatchesDetail cp) in
   CUDA.withVector  expr $ \d_expr  ->
   CUDA.allocaArray nIdx $ \d_score -> do
     --when (verbose cp) $ hPutStrLn stderr ("Matched peptides: " ++ show nIdx)
@@ -314,7 +315,7 @@ sequestXC cp (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatches
 
     -- Score and rank each candidate sequence
     --
-    CUDA.mvm   d_score d_thry d_expr nIdx (G.length expr)
+    CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr nIdx (G.length expr)
     CUDA.rsort d_score d_idx nIdx
 
     -- Retrieve the most relevant matches
@@ -328,8 +329,8 @@ sequestXC cp (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatches
 --
 -- |Modified candidates version
 --
-sequestXCMod :: ConfigParams -> HostModInfo -> ModCandidates -> Spectrum -> DevicePtr Float -> IonSeries -> DevicePtr Float -> DevicePtr Word32 -> SearchSection -> IO [(Float,Int,PepMod,[Int])]
-sequestXCMod cp hmi (_, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank) expr d_expr d_thry d_score d_mpep_idx (start, nsearch) = 
+sequestXCMod :: ConfigParams -> ExecutionPlan -> HostModInfo -> ModCandidates -> Spectrum -> DevicePtr Float -> IonSeries -> DevicePtr Float -> DevicePtr Word32 -> SearchSection -> IO [(Float,Int,PepMod,[Int])]
+sequestXCMod cp ep hmi (_, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank) expr d_expr d_thry d_score d_mpep_idx (start, nsearch) = 
   let num_mpep = nsearch
       (num_ma, ma, ma_mass) = modAcids hmi
       (_, mod_ma_count, mod_ma_count_sum, _) = modCombs hmi
@@ -346,7 +347,7 @@ sequestXCMod cp hmi (_, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpe
 
     -- Score and rank each candidate sequence
     --
-    CUDA.mvm   d_score d_thry d_expr num_mpep (G.length expr)
+    CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr num_mpep (G.length expr)
     CUDA.rsort d_score d_mpep_idx num_mpep
 
     -- Retrieve the most relevant matches

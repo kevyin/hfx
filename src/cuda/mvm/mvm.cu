@@ -19,7 +19,7 @@
  * ---------------------------------------------------------------------------*/
 
 void
-mvm_ff(float *d_y, const float *d_A, const float *d_x, const uint32_t m, const uint32_t n)
+mvm_ff(cublasHandle_t handle, float *d_y, const float *d_A, const float *d_x, const uint32_t m, const uint32_t n)
 {
 #ifdef _BENCH
     cudaThreadSynchronize();
@@ -27,15 +27,15 @@ mvm_ff(float *d_y, const float *d_A, const float *d_x, const uint32_t m, const u
     time(&t_beg);
     std::cerr << "mvm_ff" << std::endl;
 #endif
-    cublasHandle_t handle;
-    cublasCreate(&handle);
+    /*cublasHandle_t handle;*/
+    /*cublasCreate(&handle);*/
     float alpha = 1.0;
     float beta = 0.0;
 
     // Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T 
     cublasSgemv(handle, CUBLAS_OP_T, n, m, &alpha, d_A, n, d_x, 1, &beta, d_y, 1);
 
-    cublasDestroy(handle);
+    /*cublasDestroy(handle);*/
 
 #ifdef _BENCH
     cudaThreadSynchronize();
