@@ -315,6 +315,8 @@ sequestXC cp ep (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatc
 
     -- Score and rank each candidate sequence
     --
+
+    when (verbose cp) $ hPutStrLn stderr ("nidx " ++ (show nIdx) ++ "len expr " ++ (show $ G.length expr) )
     CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr nIdx (G.length expr)
     CUDA.rsort d_score d_idx nIdx
 

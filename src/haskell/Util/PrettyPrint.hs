@@ -150,13 +150,16 @@ toIonDetail cp (Match f _ (b,y) _ _) = map (B.vcat B.right)
 
 printScanResults :: ConfigParams -> FilePath -> [[(FilePath, MS2Data, Match)]] -> IO ()
 printScanResults cp fp mms = do
-  forM_ mms $ \mm -> do 
-    let (_, ms2s ,matches) = unzip3 mm 
-    printConfig cp fp (head ms2s) -- assume ms2 are same, use the first
-    printResults           $! take (numMatches cp)       matches
-    printResultsDetail     $! take (numMatchesDetail cp) matches
-    --printIonMatchDetail cp $! take (numMatchesIon cp)    matches
-
+  forM_ mms $ \mm -> 
+    if length mm > 0 
+    then do
+        let (_, ms2s ,matches) = unzip3 mm 
+        printConfig cp fp (head ms2s) -- assume ms2 are same, use the first
+        printResults           $! take (numMatches cp)       matches
+        printResultsDetail     $! take (numMatchesDetail cp) matches
+        --printIonMatchDetail cp $! take (numMatchesIon cp)    matches
+    else do
+        putStrLn ""
 printAllResults :: ConfigParams -> [(FilePath, MS2Data, Match)] -> IO ()
 printAllResults cp mm =  displayIO . ppAsRows 1 . (++) titleAll . snd . mapAccumL k 1 $ mm
     where
