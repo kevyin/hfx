@@ -100,7 +100,8 @@ searchForMatches cp ep sdb ddb hmi dmi ms2 = do
 --
 searchWithoutMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
 searchWithoutMods cp ep sdb ddb ms2 =
-  filterCandidateByMass cp ddb mass                                   $ \candidatesByMass ->
+  filterCandidateByMass cp ddb mass                                   $ \candidatesByMass -> do
+  if (fst candidatesByMass) == 0 then return [] else do
   mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)          $ \specThry   -> do
   mapMaybe finish `fmap` sequestXC cp ep candidatesByMass spec specThry
   where
@@ -312,13 +313,15 @@ sequestXC cp ep (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatc
     -- There may be no candidates as a result of bad database search parameters,
     -- or if something unexpected happened (out of memory)
     --
-    if nIdx == 0 then return [] else do
 
     -- Score and rank each candidate sequence
     --
-    --CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr nIdx (G.length expr)
     let m = nIdx
         n = G.length expr
+
+    --CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr m n
+
+    -- Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T 
     CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1
     CUDA.rsort d_score d_idx nIdx
 

@@ -31,9 +31,19 @@ mvm_ff(cublasHandle_t handle, float *d_y, const float *d_A, const float *d_x, co
     /*cublasCreate(&handle);*/
     float alpha = 1.0;
     float beta = 0.0;
-
     // Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T 
-    cublasSgemv(handle, CUBLAS_OP_T, n, m, &alpha, d_A, n, d_x, 1, &beta, d_y, 1);
+    /*thrust::device_ptr<const float> d_A_th(d_A);*/
+    /*for (int i = 0; i < m; i++) {*/
+        /*for (int j = 0; j < n; j++) {*/
+            /*std::cerr << d_A_th[i*n + j] << " ";*/
+        /*}*/
+        /*std::cerr << std::endl;*/
+    /*}*/
+    std::cerr << "m " << m << "n " << n << "alpha " << alpha << "beta " << beta << std::endl;
+    cublasStatus_t status = cublasSgemv(handle, CUBLAS_OP_T, n, m, &alpha, d_A, n, d_x, 1, &beta, d_y, 1);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        std::cerr << "CUBLAS FAILURE" << std::endl;
+    }
 
     /*cublasDestroy(handle);*/
 
