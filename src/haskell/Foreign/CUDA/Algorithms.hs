@@ -284,16 +284,15 @@ foreign import ccall unsafe "algorithms.h sort_rf"
   rsort'_ :: Ptr Float -> Ptr Word32 -> Word32 -> IO ()
 
 
-mvm :: CUBLAS.Handle -> DevicePtr Float -> DevicePtr Float -> DevicePtr Float -> Int -> Int -> IO ()
-mvm a0 a1 a2 a3 a4 a5 =
-  --withDevicePtr a0 $ \a0' ->
+mvm :: DevicePtr Float -> DevicePtr Float -> DevicePtr Float -> Int -> Int -> IO ()
+mvm a1 a2 a3 a4 a5 =
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
   withDevicePtr a3 $ \a3' ->
-  mvm'_ a0 a1' a2' a3' (fromIntegral a4) (fromIntegral a5)
+  mvm'_ a1' a2' a3' (fromIntegral a4) (fromIntegral a5)
 
 foreign import ccall unsafe "algorithms.h mvm_if"
-  mvm'_ :: CUBLAS.Handle -> Ptr Float -> Ptr Float -> Ptr Float -> Word32 -> Word32 -> IO ()
+  mvm'_ :: Ptr Float -> Ptr Float -> Ptr Float -> Word32 -> Word32 -> IO ()
 
 --sum_Word32 :: DevicePtr Word32 -> Int -> IO Int
 --sum_Word32 a1 a2 =

@@ -121,7 +121,8 @@ searchWithMods cp ep sdb ddb hmi dmi ms2 =
   in
   filterCandidateByModMass cp ddb dmi mass                $ \candsByModMass@(num_pep, _, _, _) -> 
   if num_pep == 0 then return [] else
-  filterCandidatesByModability cp ddb dmi candsByModMass  $ \candsByMassAndMod -> 
+  filterCandidatesByModability cp ddb dmi candsByModMass  $ \candsByMassAndMod@(num_pep', _, _, _, _) -> 
+  if num_pep' == 0 then return [] else
   genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->
   mapMaybe finish `fmap` scoreModCandidates cp ep ddb hmi dmi modifiedCands (ms2charge ms2) (G.length spec) spec
   
@@ -320,7 +321,7 @@ sequestXC cp ep (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatc
     let m = nIdx
         n = G.length expr
 
-    CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr m n
+    CUDA.mvm   d_score d_thry d_expr m n
 
     -- Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T 
     --CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1
@@ -358,7 +359,7 @@ sequestXCMod cp ep hmi (_, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_
     let m = num_mpep
         n = G.length expr
 
-    CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr num_mpep (G.length expr)
+    CUDA.mvm   d_score d_thry d_expr num_mpep (G.length expr)
 
     -- Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T 
     --CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1

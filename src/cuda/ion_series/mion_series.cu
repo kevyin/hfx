@@ -306,25 +306,6 @@ addModIons_core
             if (4 <= MaxCharge) addIons_k<4>(spec, len_spec, b_mass, y_mass);
         }
     }
-
-    __syncthreads();
-    // Now convert everything in spectrum as float
-    float* d_spec = d_mspec;
-    size_t pos;
-    size_t len_d_spec = num_mpep*len_spec;
-    for (int i = 0; i < len_d_spec / numThreads; ++i) 
-    {
-        pos = i*numThreads + thread_id;
-        d_spec[pos] = __int2float_rn(__float_as_int(d_spec[pos]));
-    }
-
-    size_t remainder = len_d_spec % numThreads;
-
-    if (thread_id < remainder) 
-    {
-        pos = len_d_spec - remainder + thread_id;
-        d_spec[pos] = __int2float_rn(__float_as_int(d_spec[pos]));
-    }
 }
 
 
