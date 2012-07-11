@@ -354,7 +354,13 @@ sequestXCMod cp ep hmi (_, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_
 
     -- Score and rank each candidate sequence
     --
-    CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr num_mpep (G.length expr)
+    let m = num_mpep
+        n = G.length expr
+
+    --CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr num_mpep (G.length expr)
+
+    -- Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T 
+    CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1
     CUDA.rsort d_score d_mpep_idx num_mpep
 
     -- Retrieve the most relevant matches
