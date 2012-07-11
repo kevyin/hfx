@@ -320,10 +320,10 @@ sequestXC cp ep (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatc
     let m = nIdx
         n = G.length expr
 
-    --CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr m n
+    CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr m n
 
     -- Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T 
-    CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1
+    --CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1
     CUDA.rsort d_score d_idx nIdx
 
     -- Retrieve the most relevant matches
@@ -358,10 +358,10 @@ sequestXCMod cp ep hmi (_, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_
     let m = num_mpep
         n = G.length expr
 
-    --CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr num_mpep (G.length expr)
+    CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr num_mpep (G.length expr)
 
     -- Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T 
-    CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1
+    --CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1
     CUDA.rsort d_score d_mpep_idx num_mpep
 
     -- Retrieve the most relevant matches

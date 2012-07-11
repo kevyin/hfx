@@ -292,7 +292,7 @@ mvm a0 a1 a2 a3 a4 a5 =
   withDevicePtr a3 $ \a3' ->
   mvm'_ a0 a1' a2' a3' (fromIntegral a4) (fromIntegral a5)
 
-foreign import ccall unsafe "algorithms.h mvm_ff"
+foreign import ccall unsafe "algorithms.h mvm_if"
   mvm'_ :: CUBLAS.Handle -> Ptr Float -> Ptr Float -> Ptr Float -> Word32 -> Word32 -> IO ()
 
 --sum_Word32 :: DevicePtr Word32 -> Int -> IO Int

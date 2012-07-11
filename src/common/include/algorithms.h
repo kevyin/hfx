@@ -244,8 +244,8 @@ addIons_inplace
 /*
  * Dense matrix-vector multiplication
  */
-//void mvm_if(float *d_y, const uint32_t *d_A, const float *d_x, const uint32_t m, const uint32_t n);
-void mvm_ff(cublasHandle_t handle, float *d_y, const float *d_A, const float *d_x, const uint32_t m, const uint32_t n);
+void mvm_if(float *d_y, const uint32_t *d_A, const float *d_x, const uint32_t m, const uint32_t n);
+//void mvm_ff(cublasHandle_t handle, float *d_y, const float *d_A, const float *d_x, const uint32_t m, const uint32_t n);
 
 /*
  * reduce a word32 array
