@@ -58,7 +58,7 @@ import Debug.Trace
 type CandidatesByMass = (Int, DevicePtr Word32)
 
 -- |
-type CandidatesByModMass = (DevicePtr Word32, DevicePtr Word32, Int, DevicePtr Word32)
+type CandidatesByModMass = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
 
 -- |Modable Peptides have enough of a acid for a modification to be applied
 type CandidatesModable = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
@@ -100,9 +100,9 @@ searchForMatches cp ep sdb ddb hmi dmi ms2 = do
 --
 searchWithoutMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
 searchWithoutMods cp ep sdb ddb ms2 =
-  filterCandidateByMass cp ddb mass                                   $ \candidatesByMass -> do
-  if (fst candidatesByMass) == 0 then return [] else do
-  mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)          $ \specThry   -> do
+  filterCandidateByMass cp ddb mass                                     $ \candidatesByMass@(nIdx,_) -> 
+  if nIdx  == 0 then return [] else
+  mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)      $ \specThry   -> 
   mapMaybe finish `fmap` sequestXC cp ep candidatesByMass spec specThry
   where
     spec          = sequestXCorr cp ms2
@@ -119,9 +119,10 @@ searchWithMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> 
 searchWithMods cp ep sdb ddb hmi dmi ms2 = 
   let mass = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
   in
-  filterCandidateByModMass cp ddb dmi mass $ \candsByModMass -> 
-  filterCandidatesByModability cp ddb dmi candsByModMass $ \candsByMassAndMod -> 
-  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands -> 
+  filterCandidateByModMass cp ddb dmi mass                $ \candsByModMass@(num_pep, _, _, _) -> 
+  if num_pep == 0 then return [] else
+  filterCandidatesByModability cp ddb dmi candsByModMass  $ \candsByMassAndMod -> 
+  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->
   mapMaybe finish `fmap` scoreModCandidates cp ep ddb hmi dmi modifiedCands (ms2charge ms2) (G.length spec) spec
   
   where
@@ -158,7 +159,7 @@ filterCandidateByModMass cp ddb dmi mass action =
   CUDA.allocaArray num_mod $ \d_end ->        -- end idx
   CUDA.allocaArray num_mod $ \d_num_pep ->    -- end[i] - begin[i]
   CUDA.allocaArray num_mod $ \d_num_pep_scan-> 
-  CUDA.findBeginEnd d_begin d_end d_num_pep d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_pep_total -> action (d_begin, d_end, num_pep_total, d_num_pep_scan)
+  CUDA.findBeginEnd d_begin d_end d_num_pep d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_pep_total -> action (num_pep_total, d_begin, d_end, d_num_pep_scan)
   where
     eps = massTolerance cp
 
@@ -172,7 +173,7 @@ filterCandidateByModMass cp ddb dmi mass action =
 -- modifiable acids to be generated from each peptide
 --
 filterCandidatesByModability :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> CandidatesByModMass -> (CandidatesModable -> IO b) -> IO b
-filterCandidatesByModability cp ddb dmi (d_begin, d_end, num_pep_total, d_num_pep_scan) action =
+filterCandidatesByModability cp ddb dmi (num_pep_total, d_begin, d_end, d_num_pep_scan) action =
   let (num_ma, d_ma, _)                 = devModAcids dmi 
       (num_mod, d_mod_ma_count, _, _)   = devModCombs dmi 
       d_pep_idx_r_sorted                = devResIdxSort ddb
@@ -237,7 +238,7 @@ scoreModCandidates cp ep ddb hmi dmi mcands chrg len expr =
                 + sizeOf (undefined :: Float) -- d_score
       totalReqMem = num_mpep * memPerPep
   in
-  if num_mpep == 0 then return [] else 
+  --if num_mpep == 0 then return [] else 
 
   CUDA.withVector expr $ \d_expr -> 
   getMemInfo >>= \(freeMem,_) ->
