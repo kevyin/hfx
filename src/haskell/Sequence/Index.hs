@@ -37,9 +37,9 @@ import Debug.Trace
 -- into a ByteString first. Probably not too bad, as 'encode' would have done
 -- this anyway.
 --
-writeIndex :: Handle -> ConfigParams -> SequenceDB -> IO ()
-writeIndex hdl cp db = encodeFile (fromJust $ outputPath cp) db
-{-
+--writeIndex :: Handle -> ConfigParams -> SequenceDB -> IO ()
+--writeIndex hdl cp db = encodeFile (fromJust $ outputPath cp) db
+
 writeIndex :: Handle -> ConfigParams -> SequenceDB -> IO ()
 writeIndex hdl cp db = L.hPut hdl header >> L.hPut hdl content
   where
@@ -61,7 +61,6 @@ writeIndex hdl cp db = L.hPut hdl header >> L.hPut hdl content
       if det == 0 then mods
                   else ("add_" ++ [aa] ++ " = " ++ show det) : mods
 
--}
 
 
 --
@@ -71,15 +70,13 @@ writeIndex hdl cp db = L.hPut hdl header >> L.hPut hdl content
 readIndex :: ConfigParams -> FilePath -> IO (ConfigParams, SequenceDB)
 readIndex cp fp = do
   f   <- L.readFile fp
-  --let (opt,f',_) = runGetState get f 0
-      --db         = decode (decompress f')
-      --table      = G.replicate (rangeSize ('A','Z')) 0
+  let (opt,f',_) = runGetState get f 0
+      db         = decode (decompress f')
+      table      = G.replicate (rangeSize ('A','Z')) 0
 
-  putTraceMsg "decoding file"
-  db         <- decodeFile fp
-  putTraceMsg "decoded file"
-  putTraceMsg $ " dbion length " ++ show (G.length $ dbIon db)
-  --(,db) `fmap` readConfig (L.unpack opt) fp (cp {aaMassTable = table, databasePath = Just fp})
-
-  return (cp,db)
+  --putTraceMsg "decoding file"
+  --db         <- decodeFile fp
+  --putTraceMsg "decoded file"
+  --putTraceMsg $ " dbion length " ++ show (G.length $ dbIon db)
+  (,db) `fmap` readConfig (L.unpack opt) fp (cp {aaMassTable = table, databasePath = Just fp})
 
