@@ -30,9 +30,8 @@ main = do
   (cp,f) <- sequestConfig args
   let fp =  fromMaybe (error "Protein database not specified") (databasePath cp)
 
-  (t,dbs) <- bracketTime $ makeSeqDB cp fp 1
+  (t,db) <- bracketTime $ makeSeqDB cp fp
   when (verbose cp) $ hPutStrLn stderr ("Reading time: " ++ showTime t)
-  let db = head dbs
 
   if null f
      then writeIndex stdout cp db

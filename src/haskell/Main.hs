@@ -70,14 +70,14 @@ main = do
   -- Load the proteins from file, marshal to the device, and then get to work!
   --
   when (verbose cp) $ hPutStrLn stderr ("Loading Database ...\n" )
-  --(cp',dbs) <- loadDatabase cp fp (splitDB cp)
-  (t,(cp',dbs)) <- bracketTime $ loadDatabase cp fp (splitDB cp)
+  --(cp',dbs) <- loadDatabase cp fp
+  (t,(cp',db)) <- bracketTime $ loadDatabase cp fp
   when (verbose cp) $ hPutStrLn stderr ("Load Database Elapsed time: " ++ showTime t)
 
   when (verbose cp) $ hPutStrLn stderr ("Searching ...\n" )
   let hmi = makeModInfo cp'
-  (t2,allMatches') <- bracketTime $ forM dbs $ \db -> do
-    withDeviceDB cp' db $ \ddb -> 
+  --(t2,allMatches') <- bracketTime $ forM dbs $ \db -> do
+  (t2, allMatches') <- bracketTime $ withDeviceDB cp' db $ \ddb -> 
       withDevModInfo ddb hmi $ \dmi -> forM dta $ \f -> do
         matches <- search cp' db hmi dmi ddb f
         when (showMatchesPerScan cp) $ printScanResults cp' f matches
@@ -86,7 +86,7 @@ main = do
           
 
   let sortXC = sortBy (\(_,_,a) (_,_,b) -> compare (scoreXC b) (scoreXC a))
-      matchesRaw = concat $ concat $ concat allMatches'
+      matchesRaw = concat $ concat allMatches'
       --matchesByScan = map sortXC $ groupBy (\(_,ms,_) (_,ms',_) -> ms == ms') matchesRaw
       --matchesByFile = map sortXC $ groupBy (\(f,_,_) (f',_,_) -> f == f') matchesRaw
       n = maximum $ [(numMatches cp'), (numMatchesDetail cp'), (numMatchesIon cp')]
@@ -97,11 +97,11 @@ main = do
 
 
 {-# INLINE loadDatabase #-}
-loadDatabase :: ConfigParams -> FilePath -> Int -> IO (ConfigParams, [SequenceDB])
-loadDatabase cp fp split = do
+loadDatabase :: ConfigParams -> FilePath -> IO (ConfigParams, SequenceDB)
+loadDatabase cp fp = do
   (cp',dbs) <- case takeExtensions fp of
-    ext | ".fasta" `isPrefixOf` ext -> (cp,) `liftM` makeSeqDB cp fp split
-    ext | ".index" `isPrefixOf` ext -> readIndex cp fp >>= \(cp',sdb) -> return (cp',[sdb]) 
+    ext | ".fasta" `isPrefixOf` ext -> (cp,) `liftM` makeSeqDB cp fp
+    ext | ".index" `isPrefixOf` ext -> readIndex cp fp >>= \(cp',sdb) -> return (cp',sdb) 
     _                               -> error ("Unsupported database type: " ++ show fp)
   return (cp',dbs)
 
