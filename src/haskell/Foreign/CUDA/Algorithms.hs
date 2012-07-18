@@ -15,7 +15,7 @@ module Foreign.CUDA.Algorithms
     findIndicesInRange, findModablePeptides, findBeginEnd,
     calcTotalModCands, prepareGenMod, genModCands,
     addIons, addModIons, 
-    sort_val, rsort,
+    sort_val, sort_idx, rsort,
     mvm
   )
   where
@@ -273,6 +273,15 @@ sort_val a1 a2 a3 =
 
 foreign import ccall unsafe "algorithms.h sort_val_f"
   sort_val'_ :: Ptr Float -> Ptr Word32 -> Word32 -> IO ()
+
+sort_idx :: DevicePtr Float -> DevicePtr Word32 -> Int -> IO ()
+sort_idx a1 a2 a3 =
+  withDevicePtr a1 $ \a1' ->
+  withDevicePtr a2 $ \a2' ->
+  sort_idx'_ a1' a2' (cIntConv a3)
+
+foreign import ccall unsafe "algorithms.h sort_idx_f"
+  sort_idx'_ :: Ptr Float -> Ptr Word32 -> Word32 -> IO ()
 
 rsort :: DevicePtr Float -> DevicePtr Word32 -> Int -> IO ()
 rsort a1 a2 a3 =

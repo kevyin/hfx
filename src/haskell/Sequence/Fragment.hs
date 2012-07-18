@@ -45,7 +45,7 @@ import qualified Data.Vector.Fusion.Stream.Size as S
 
 import qualified Foreign.CUDA                   as CUDA
 import qualified Foreign.CUDA.Util              as CUDA
-import qualified Foreign.CUDA.Algorithms        as CUDA (sort_val)
+import qualified Foreign.CUDA.Algorithms        as CUDA (sort_idx)
 
 import Debug.Trace
 
@@ -244,7 +244,7 @@ withDeviceDB cp sdb action =
       ions    = dbIon sdb
       numIon  = G.length (dbIon  sdb)
       numFrag = G.length (dbFrag sdb)
-      pep_idx_r_sorted = U.enumFromN 0 numFrag
+      -- pep_idx_r_sorted = U.enumFromN 0 numFrag
   in
       CUDA.withVector r    $ \d_r    ->
       CUDA.withVector r    $ \d_r_sorted    ->
@@ -252,8 +252,9 @@ withDeviceDB cp sdb action =
       CUDA.withVector n    $ \d_n    ->
       CUDA.withVector mt   $ \d_mt   ->
       CUDA.withVector ions $ \d_ions ->
-      CUDA.withVector pep_idx_r_sorted $ \d_pep_idx_r_sorted -> do
-          CUDA.sort_val d_r_sorted d_pep_idx_r_sorted numFrag
+      -- CUDA.withVector pep_idx_r_sorted $ \d_pep_idx_r_sorted -> do
+      CUDA.allocaArray numFrag $ \d_pep_idx_r_sorted -> do
+          CUDA.sort_idx d_r_sorted d_pep_idx_r_sorted numFrag
           action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n) d_pep_idx_r_sorted)
 
 makeModInfo :: ConfigParams -> HostModInfo

@@ -1,6 +1,8 @@
 #ifndef __FUNCTORS_H__ 
 #define __FUNCTORS_H__
 
+#include <thrust/tuple.h>
+#include <thrust/functional.h>
 
 template <typename T>
 struct greaterThan : public thrust::unary_function<T,bool>

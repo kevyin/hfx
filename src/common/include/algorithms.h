@@ -41,6 +41,12 @@ void sort_rf(float *d_keys, uint32_t *d_vals, uint32_t N);
  */
 void sort_val_f(float *d_keys, uint32_t *d_vals, uint32_t N);
 
+/*
+ * key-value sort (in-place)
+ * with idx's from 0 to N-1
+ */
+void sort_idx_f(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N);
+
 #if 0
 /*
  * Permute (32-bit payload)

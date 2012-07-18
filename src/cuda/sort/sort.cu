@@ -7,10 +7,13 @@
  * ---------------------------------------------------------------------------*/
 
 #include <thrust/device_vector.h>
+#include <thrust/iterator/transform_iterator.h>
+#include <thrust/iterator/zip_iterator.h>
 #include <thrust/sort.h>
 #include <stdint.h>
 
 #include "algorithms.h"
+#include "functors.h"
 
 void sort_val_f(float *d_keys_raw, uint32_t *d_vals_raw, uint32_t N)
 {
@@ -18,6 +21,16 @@ void sort_val_f(float *d_keys_raw, uint32_t *d_vals_raw, uint32_t N)
     thrust::device_ptr<uint32_t> d_vals(d_vals_raw);
 
     thrust::sort_by_key(d_keys, d_keys + N, d_vals);
+}
+
+void sort_idx_f(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N)
+{
+    thrust::device_ptr<float>    d_keys(d_keys_raw);
+    thrust::device_ptr<uint32_t> d_idx(d_idx_raw);
+
+    thrust::counting_iterator<uint32_t> iter(0);
+    thrust::copy(iter, iter + N, d_idx);
+    thrust::sort_by_key(d_keys, d_keys + N, d_idx);
 }
 
 void sort_rf(float *d_keys_raw, uint32_t *d_vals_raw, uint32_t N)
