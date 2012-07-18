@@ -247,13 +247,14 @@ withDeviceDB cp sdb action =
       pep_idx_r_sorted = U.enumFromN 0 numFrag
   in
       CUDA.withVector r    $ \d_r    ->
+      CUDA.withVector r    $ \d_r_sorted    ->
       CUDA.withVector c    $ \d_c    ->
       CUDA.withVector n    $ \d_n    ->
       CUDA.withVector mt   $ \d_mt   ->
       CUDA.withVector ions $ \d_ions ->
-      CUDA.withVector pep_idx_r_sorted $ \d_r_sorted -> do
-          CUDA.sort_val d_r d_r_sorted numFrag
-          action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n) d_r_sorted)
+      CUDA.withVector pep_idx_r_sorted $ \d_pep_idx_r_sorted -> do
+          CUDA.sort_val d_r_sorted d_pep_idx_r_sorted numFrag
+          action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n) d_pep_idx_r_sorted)
 
 makeModInfo :: ConfigParams -> HostModInfo
 {-# INLINE makeModInfo #-}

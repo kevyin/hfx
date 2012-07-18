@@ -14,11 +14,10 @@
 
 void sort_val_f(float *d_keys_raw, uint32_t *d_vals_raw, uint32_t N)
 {
-    thrust::device_ptr<float>    d_keys_(d_keys_raw);
-    thrust::device_vector<float> d_keys(d_keys_, d_keys_ + N);
+    thrust::device_ptr<float>    d_keys(d_keys_raw);
     thrust::device_ptr<uint32_t> d_vals(d_vals_raw);
 
-    thrust::sort_by_key(d_keys.begin(), d_keys.end(), d_vals, thrust::less<float>());
+    thrust::sort_by_key(d_keys, d_keys + N, d_vals);
 }
 
 void sort_rf(float *d_keys_raw, uint32_t *d_vals_raw, uint32_t N)
