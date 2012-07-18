@@ -158,9 +158,9 @@ filterCandidateByModMass cp ddb dmi mass action =
   in
   CUDA.allocaArray num_mod $ \d_begin ->      -- begin idx to d_pep_idx_r_sorted
   CUDA.allocaArray num_mod $ \d_end ->        -- end idx
-  CUDA.allocaArray num_mod $ \d_num_pep ->    -- end[i] - begin[i]
+  -- CUDA.allocaArray num_mod $ \d_num_pep ->    -- end[i] - begin[i]
   CUDA.allocaArray num_mod $ \d_num_pep_scan-> 
-  CUDA.findBeginEnd d_begin d_end d_num_pep d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_pep_total -> action (num_pep_total, d_begin, d_end, d_num_pep_scan)
+  CUDA.findBeginEnd d_begin d_end {-d_num_pep-} d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_pep_total -> action (num_pep_total, d_begin, d_end, d_num_pep_scan)
   where
     eps = massTolerance cp
 

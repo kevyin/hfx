@@ -80,7 +80,7 @@ findBeginEnd_f
 (
     uint32_t            *d_begin_raw,
     uint32_t            *d_end_raw,
-    uint32_t            *d_num_pep_raw,
+    //uint32_t            *d_num_pep_raw,
     uint32_t            *d_num_pep_scan_raw,
 
     const float         *d_r_raw,

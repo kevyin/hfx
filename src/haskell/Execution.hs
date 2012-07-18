@@ -15,28 +15,6 @@ module Execution
   )
   where
 
---import Mass
---import Util.Misc
---import Util.Parsec
-
---import Control.Monad
---import Data.Char
---import Data.List
---import Data.Maybe
---import Data.Version
---import System.Console.GetOpt
---import System.Directory
---import System.IO
---import System.Exit
---import System.Environment
---import Text.Show.Functions ()
---import Text.ParserCombinators.Parsec
-
---import Data.Ix
---import Data.Vector.Unboxed (Vector)
---import qualified Data.Vector.Unboxed as U
-
---import Paths_hfx (version)
 import Foreign.CUDA.BLAS as CUBLAS
 
 

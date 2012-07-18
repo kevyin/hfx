@@ -9,12 +9,15 @@
 #include "utils.h"
 #include "device.h"
 #include "algorithms.h"
+#include "functors.h"
+#include "functional.hpp"
 
 #include <stdint.h>
 #include <stdlib.h>
 #include <iostream>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/device_vector.h>
+#include <thrust/transform_scan.h>
 #include <thrust/copy.h>
 #include <thrust/scan.h>
 
@@ -160,20 +163,6 @@ findByMod_control(uint32_t N, uint32_t &blocks, uint32_t &threads)
     blocks  = (N + threads - 1) / threads;
     blocks  = min(blocks, MAX_BLOCKS);
 }
-
-template <typename T>
-struct greaterThan : public thrust::unary_function<T,bool>
-{
-    T bound;
-
-    __host__ __device__
-    greaterThan(T _m) : bound(_m) {}
-
-    __host__ __device__ bool operator() (T x)
-    {
-        return (bound < x);
-    }
-};
 
 /**
  * fillMatrixRow
@@ -484,7 +473,7 @@ findBeginEnd_f
 (
     uint32_t            *d_begin_raw,
     uint32_t            *d_end_raw,
-    uint32_t            *d_num_pep_raw,
+    //uint32_t            *d_num_pep_raw,
     uint32_t            *d_num_pep_scan_raw,
 
     const float         *d_r,
@@ -507,7 +496,7 @@ findBeginEnd_f
     // setup device ptrs
     thrust::device_ptr<uint32_t> d_begin(d_begin_raw);
     thrust::device_ptr<uint32_t> d_end(d_end_raw);
-    thrust::device_ptr<uint32_t> d_num_pep(d_num_pep_raw);
+    //thrust::device_ptr<uint32_t> d_num_pep(d_num_pep_raw);
     thrust::device_ptr<uint32_t> d_num_pep_scan(d_num_pep_scan_raw);
 
     thrust::device_ptr<const float> d_mod_delta(d_mod_delta_raw);
@@ -516,11 +505,15 @@ findBeginEnd_f
     thrust::transform(d_mod_delta, d_mod_delta + num_mod, d_begin, findBegin<uint32_t>(d_r, d_pep_idx_r_sorted, num_pep, mass, eps));
     thrust::transform(d_mod_delta, d_mod_delta + num_mod, d_end, findEnd<uint32_t>(d_r, d_pep_idx_r_sorted, num_pep, mass, eps));
 
-    // calc number of peptides in a range
-    thrust::transform(d_end, d_end + num_mod, d_begin, d_num_pep, thrust::minus<uint32_t>());
-    // scan the above 
-    thrust::exclusive_scan(d_num_pep, d_num_pep + num_mod, d_num_pep_scan);
+    // calc number of peptides in a range and scan values
 
+    thrust::transform_exclusive_scan(thrust::make_zip_iterator(thrust::make_tuple(d_end, d_begin)),
+                                     thrust::make_zip_iterator(thrust::make_tuple(d_end + num_mod, d_begin + num_mod)),
+                                     d_num_pep_scan,
+                                     minus_2tuple<uint32_t>(),
+                                     0,
+                                     thrust::plus<uint32_t>()); 
+    
 
 #ifdef _DEBUG
 // check begin and ends are sane
@@ -563,7 +556,7 @@ findBeginEnd_f
     }
 #endif
 
-    uint32_t total = thrust::reduce(d_num_pep, d_num_pep + num_mod);
+    //uint32_t total = thrust::reduce(d_num_pep, d_num_pep + num_mod);
 
 #ifdef _BENCH
     cudaThreadSynchronize();
@@ -571,7 +564,8 @@ findBeginEnd_f
     std::cerr << "Time elapsed for findBeginEnd_f: " << difftime(t_end,t_beg) << " %.2lf seconds\n" << std::endl;
 #endif 
     // return total peptides
-    return total;
+    uint32_t last_mod_idx = num_mod - 1;
+    return d_num_pep_scan[last_mod_idx] + d_end[last_mod_idx] - d_begin[last_mod_idx];
 }
 
 /**
