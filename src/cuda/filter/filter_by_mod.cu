@@ -65,8 +65,6 @@ findBeginEnd_f
     device_ptr<const uint32_t> d_pep_idx_r_sorted_th(d_pep_idx_r_sorted);
 
     // Find begin and ends
-    //thrust::transform(d_mod_delta, d_mod_delta + num_mod, d_begin, findBegin<uint32_t>(d_r, d_pep_idx_r_sorted, num_pep, mass, eps));
-    //thrust::transform(d_mod_delta, d_mod_delta + num_mod, d_end, findEnd<uint32_t>(d_r, d_pep_idx_r_sorted, num_pep, mass, eps));
 
     permutation_iterator<device_ptr<const float>, device_ptr<const uint32_t> > iter(d_r_th, d_pep_idx_r_sorted_th);
     lower_bound(iter,iter+num_pep,
