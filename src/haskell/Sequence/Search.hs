@@ -61,7 +61,7 @@ type CandidatesByMass = (Int, DevicePtr Word32)
 type CandidatesByModMass = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
 
 -- |Modable Peptides have enough of a acid for a modification to be applied
-type CandidatesModable = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
+type CandidatesModable = (Int, {-DevicePtr Word32, -}DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
 
 -- |Modified peptides from CandidatesModable
 type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, Int)
@@ -119,10 +119,10 @@ searchWithMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> 
 searchWithMods cp ep sdb ddb hmi dmi ms2 = 
   let mass = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
   in
-  filterCandidateByModMass cp ddb dmi mass                $ \candsByModMass@(num_pep, _, _, _) -> 
-  if num_pep == 0 then return [] else
-  filterCandidatesByModability cp ddb dmi candsByModMass  $ \candsByMassAndMod@(num_pep',_,_,_,_) -> 
-  if num_pep' == 0 then return [] else
+  filterCandidateByModMass cp ddb dmi mass                $ \candsByModMass@(num_cand_mass, _, _, _) -> 
+  if num_cand_mass == 0 then return [] else
+  filterCandidatesByModability cp ddb dmi candsByModMass  $ \candsByMassAndMod@(num_cand_massmod,_,_,_) -> 
+  if num_cand_massmod == 0 then return [] else
   genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->
   mapMaybe finish `fmap` scoreModCandidates cp ep ddb hmi dmi modifiedCands (ms2charge ms2) (G.length spec) spec
   
@@ -160,7 +160,7 @@ filterCandidateByModMass cp ddb dmi mass action =
   CUDA.allocaArray num_mod $ \d_end ->        -- end idx
   -- CUDA.allocaArray num_mod $ \d_num_pep ->    -- end[i] - begin[i]
   CUDA.allocaArray num_mod $ \d_num_pep_scan-> 
-  CUDA.findBeginEnd d_begin d_end {-d_num_pep-} d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_pep_total -> action (num_pep_total, d_begin, d_end, d_num_pep_scan)
+  CUDA.findBeginEnd d_begin d_end {-d_num_pep-} d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_cand_mass -> action (num_cand_mass, d_begin, d_end, d_num_pep_scan)
   where
     eps = massTolerance cp
 
@@ -174,17 +174,16 @@ filterCandidateByModMass cp ddb dmi mass action =
 -- modifiable acids to be generated from each peptide
 --
 filterCandidatesByModability :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> CandidatesByModMass -> (CandidatesModable -> IO b) -> IO b
-filterCandidatesByModability cp ddb dmi (num_pep_total, d_begin, d_end, d_num_pep_scan) action =
+filterCandidatesByModability cp ddb dmi (num_cand_mass, d_begin, d_end, d_num_pep_scan) action =
   let (num_ma, d_ma, _)                 = devModAcids dmi 
       (num_mod, d_mod_ma_count, _, _)   = devModCombs dmi 
       d_pep_idx_r_sorted                = devResIdxSort ddb
   in
-  CUDA.allocaArray num_pep_total $ \d_pep_valid_idx->   -- modable peptide indices to be returned here
-  CUDA.allocaArray num_pep_total $ \d_pep_idx ->        -- idx of peptide to tc tn
-  CUDA.allocaArray num_pep_total $ \d_pep_mod_idx ->    -- peptides corresponding modification
-  CUDA.allocaArray (num_pep_total*num_ma) $ \d_pep_ma_count -> -- modable acid count for each peptide
-  CUDA.findModablePeptides d_pep_valid_idx d_pep_idx d_pep_mod_idx d_pep_ma_count num_pep_total (devIons ddb) (devTerminals ddb) d_pep_idx_r_sorted d_begin d_end d_num_pep_scan d_mod_ma_count num_mod d_ma num_ma >>= \n -> do
-    action (n, d_pep_valid_idx, d_pep_idx, d_pep_mod_idx, d_pep_ma_count)
+  CUDA.allocaArray num_cand_mass $ \d_pep_idx ->        -- idx of peptide to tc tn
+  CUDA.allocaArray num_cand_mass $ \d_pep_mod_idx ->    -- peptides corresponding modification
+  CUDA.allocaArray (num_cand_mass*num_ma) $ \d_pep_ma_count -> -- modable acid count for each peptide
+  CUDA.findModablePeptides d_pep_idx d_pep_mod_idx d_pep_ma_count num_cand_mass (devIons ddb) (devTerminals ddb) d_pep_idx_r_sorted d_begin d_end d_num_pep_scan d_mod_ma_count num_mod d_ma num_ma >>= \n -> do
+    action (n, d_pep_idx, d_pep_mod_idx, d_pep_ma_count)
 
 --
 -- |Given some unmodified peptides, modifications and
@@ -192,35 +191,35 @@ filterCandidatesByModability cp ddb dmi (num_pep_total, d_begin, d_end, d_num_pe
 -- See gen_mod_pep_cu for details
 -- 
 genModCandidates :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> CandidatesModable -> (ModCandidates -> IO b) -> IO b
-genModCandidates cp ddb dmi (num_pep, d_pep_valid_idx, d_pep_idx, d_pep_mod_idx, d_pep_ma_count) action =
+genModCandidates cp ddb dmi (num_cand_massmod, d_pep_idx, d_pep_mod_idx, d_pep_ma_count) action =
   let (num_ma, _, _) = devModAcids dmi 
       (num_mod, d_mod_ma_count, d_mod_ma_count_sum, _) = devModCombs dmi 
   in
 
   -- calc number of modified peps generated from each pep
-  CUDA.mallocArray num_pep          >>= \d_pep_num_mpep ->         -- number of modified peptides for each peptide
-  CUDA.mallocArray (num_pep*num_ma) >>= \d_pep_ma_num_comb ->      -- for each modable acid: number of ways to choose it ie choose(num in pep, num in mod)
-  CUDA.mallocArray (num_pep*num_ma) >>= \d_pep_ma_num_comb_scan -> -- above scaned for each peptide
-  CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan d_mod_ma_count d_pep_idx d_pep_mod_idx d_pep_ma_count d_pep_valid_idx num_pep num_mod num_ma >>= \num_mpep -> 
+  CUDA.mallocArray num_cand_massmod          >>= \d_pep_num_mpep ->         -- number of modified peptides for each peptide
+  CUDA.mallocArray (num_cand_massmod*num_ma) >>= \d_pep_ma_num_comb ->      -- for each modable acid: number of ways to choose it ie choose(num in pep, num in mod)
+  CUDA.mallocArray (num_cand_massmod*num_ma) >>= \d_pep_ma_num_comb_scan -> -- above scaned for each peptide
+  CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan d_mod_ma_count d_pep_idx d_pep_mod_idx d_pep_ma_count num_cand_massmod num_mod num_ma >>= \num_mpep -> 
 
   CUDA.mallocArray num_mpep >>= \d_mpep_rank ->               
-  CUDA.mallocArray num_mpep >>= \d_mpep_ith_valid->           
+  CUDA.mallocArray num_mpep >>= \d_mpep_ith_cand->           
   CUDA.mallocArray num_mpep >>= \d_mpep_mod_ma_count_sum ->   
   CUDA.allocaArray num_mpep $ \d_mpep_pep_idx -> 
   CUDA.allocaArray num_mpep $ \d_mpep_pep_mod_idx -> 
   CUDA.allocaArray num_mpep $ \d_mpep_mod_ma_count_sum_scan -> 
 
-  CUDA.prepareGenMod d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_rank d_mpep_ith_valid d_mpep_mod_ma_count_sum d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_valid_idx d_pep_num_mpep num_pep num_mpep >>= \ len_unrank ->
+  CUDA.prepareGenMod d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_rank d_mpep_ith_cand d_mpep_mod_ma_count_sum d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_num_mpep num_cand_massmod num_mpep >>= \ len_unrank ->
 
   CUDA.allocaArray (len_unrank) $ \d_mpep_unrank -> do
-    CUDA.genModCands d_mpep_unrank d_mod_ma_count d_mpep_ith_valid d_mpep_rank d_mpep_mod_ma_count_sum_scan d_pep_mod_idx d_pep_ma_count d_pep_valid_idx d_pep_ma_num_comb_scan num_mpep num_ma 
+    CUDA.genModCands d_mpep_unrank d_mod_ma_count d_mpep_ith_cand d_mpep_rank d_mpep_mod_ma_count_sum_scan d_pep_mod_idx d_pep_ma_count d_pep_ma_num_comb_scan num_mpep num_ma 
 
     -- free mallocs
     CUDA.free d_pep_num_mpep
     CUDA.free d_pep_ma_num_comb
     CUDA.free d_pep_ma_num_comb_scan
     CUDA.free d_mpep_rank
-    CUDA.free d_mpep_ith_valid
+    CUDA.free d_mpep_ith_cand
     CUDA.free d_mpep_mod_ma_count_sum
 
     action (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank)

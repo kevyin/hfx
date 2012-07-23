@@ -102,7 +102,6 @@ findBeginEnd_f
 uint32_t
 findModablePeptides
 (
-    uint32_t            *d_out_pep_idx_valid_raw, // valid indices
     uint32_t            *d_out_pep_idx_raw, 
     uint32_t            *d_out_pep_mod_idx_raw, 
     uint32_t            *d_out_pep_ma_count_raw,   // 2d array, count of each ma in each peptide
@@ -134,7 +133,6 @@ calcTotalModCands
     const uint32_t    *d_pep_idx_raw,
     const uint32_t    *d_pep_mod_idx_raw,
     const uint32_t    *d_pep_ma_count_raw,
-    const uint32_t    *d_pep_valid_idx_raw,
     const uint32_t    nPep,                             // number of peptides (unmodified)
     const uint32_t    num_mod,
     const uint32_t    num_ma
@@ -155,7 +153,6 @@ prepareGenMod
     const uint32_t    *d_pep_idx,
     const uint32_t    *d_pep_mod_idx,
 
-    const uint32_t    *d_pep_valid_idx,
     const uint32_t    *d_pep_num_mpep,
     const uint32_t    num_pep,
     const uint32_t    num_mpep
@@ -175,7 +172,6 @@ genModCands
     const uint32_t  *d_pep_mod_idx,
     const uint32_t  *d_pep_ma_count,        // 2d array of ma count in each pep
 
-    const uint32_t  *d_pep_valid_idx,
     const uint32_t  *d_pep_ma_num_comb_scan,
 
     const uint32_t  total,

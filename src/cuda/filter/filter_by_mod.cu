@@ -19,6 +19,7 @@
 #include <thrust/device_vector.h>
 #include <thrust/transform_scan.h>
 #include <thrust/binary_search.h>
+#include <thrust/remove.h>
 #include <thrust/copy.h>
 #include <thrust/scan.h>
 
@@ -256,11 +257,10 @@ struct checkModable: public thrust::unary_function<T, T>
 uint32_t
 findModablePeptides
 (
-    uint32_t            *d_out_valid_raw, // valid peptide array indices
     uint32_t            *d_out_pep_idx_raw, 
     uint32_t            *d_out_pep_mod_idx_raw, 
     uint32_t            *d_out_pep_ma_count_raw,   // 2d array, count of each ma in each peptide
-    uint32_t            num_cand_total,
+    uint32_t            num_cand_mass,
 
     const uint8_t       *d_ions,
     const uint32_t      *d_tc,
@@ -286,7 +286,6 @@ findModablePeptides
     //printGPUMemoryUsage();
 #endif 
 
-    thrust::device_ptr<uint32_t> d_out_valid(d_out_valid_raw);
     thrust::device_ptr<uint32_t> d_out_pep_ma_count(d_out_pep_ma_count_raw);
 
 
@@ -306,40 +305,38 @@ findModablePeptides
     thrust::for_each(first, last, fillPepAndModIdx<uint32_t>(d_out_pep_idx_raw, d_out_pep_mod_idx_raw, d_pep_idx_r_sorted_raw, d_begin_raw, d_end_raw, d_num_pep_scan_raw));
 
     // non compacted arrays
-    thrust::device_vector<bool> d_valid_v(num_cand_total);
-    /*thrust::device_vector<uint32_t> d_out_pep_ma_count2(num_ma*num_cand_total);*/
+    thrust::device_vector<bool> d_valid_v(num_cand_mass);
+    /*thrust::device_vector<uint32_t> d_out_pep_ma_count2(num_ma*num_cand_mass);*/
 
     // count and valid
     
-    last = first + num_cand_total * num_ma;
+    last = first + num_cand_mass * num_ma;
     thrust::transform(first, last, d_out_pep_ma_count, fillPepMACount<uint32_t>(d_out_pep_idx_raw, d_tc, d_tn, d_ions, d_ma, num_ma));
 
-    last = first + num_cand_total;
+    last = first + num_cand_mass;
     thrust::transform(first, last, d_valid_v.begin(), checkModable<uint32_t>(d_out_pep_ma_count_raw, d_out_pep_mod_idx_raw, d_mod_ma_count, num_ma));
 
     // compact
-    //device_ptr<uint32_t> d_pep_mod_idx(d_out_pep_mod_idx_raw);
-    //device_ptr<uint32_t> d_pep_idx(d_out_pep_idx_raw);
-    //device_ptr<uint32_t> d_pep_ma_count(d_out_pep_ma_count_raw);
+    device_ptr<uint32_t> d_pep_mod_idx(d_out_pep_mod_idx_raw);
+    device_ptr<uint32_t> d_pep_idx(d_out_pep_idx_raw);
+    device_ptr<uint32_t> d_pep_ma_count(d_out_pep_ma_count_raw);
 
+    typedef device_ptr<uint32_t>            UIntDIter;
+    typedef tuple<UIntDIter, UIntDIter>     UIntDIterTuple2;
+    typedef zip_iterator<UIntDIterTuple2>   ZipIter;
 
-    //thrust::remove_if(make_zip_iterator(make_tuple(d_pep_mod_idx, d_pep_idx),
-                                        //make_tuple(d_pep_mod_idx+num_cand_total, d_pep_idx+num_cand_total),
-                                        //d_valid_v.begin(),
-                                        //logical_not<bool>());
-    //thrust::remove_if(d_pep_ma_count, d_pep_ma_count+num_cand_total*num_ma,
-                      //d_valid_v.begin(),
-                      //logical_not<bool>());
+    ZipIter end = remove_if(make_zip_iterator(make_tuple(d_pep_mod_idx, d_pep_idx)),
+                            make_zip_iterator(make_tuple(d_pep_mod_idx+num_cand_mass, d_pep_idx+num_cand_mass)),
+                            d_valid_v.begin(),
+                            logical_not<bool>());
 
-    // compact : d_valid
-    // copy if d_valid[i] > 0
+    last = first + num_cand_mass * num_ma;
+    remove_if(d_pep_ma_count, d_pep_ma_count+num_cand_mass*num_ma,
+              make_transform_iterator(first, mat_wider<bool>(d_valid_v.data().get(),num_ma)),
+              logical_not<bool>());
     
-    last = first + num_cand_total;
-    thrust::device_ptr<uint32_t> d_out_valid_end =
-        thrust::copy_if(first, last, d_valid_v.begin(), d_out_valid, greaterThan<const uint32_t>(0));
-
-
-    const uint32_t numValid = d_out_valid_end - d_out_valid;
+    UIntDIterTuple2 endTuple = end.get_iterator_tuple();
+    const uint32_t numValid = get<0>(endTuple) - d_pep_mod_idx;
 
 #ifdef _BENCH
     cudaThreadSynchronize();

@@ -61,7 +61,6 @@ struct calcNumCombPerAcid: public thrust::unary_function<T, uint32_t>
     const T    *d_mod_ma_count;
     const T    *d_pep_mod_idx;
     const T    *d_pep_ma_count;
-    const T    *d_pep_valid_idx;
     const T    num_mod;
     const T    num_ma;
 
@@ -69,18 +68,17 @@ struct calcNumCombPerAcid: public thrust::unary_function<T, uint32_t>
     calcNumCombPerAcid(const T    *_mmc, 
                        const T    *_pmi, 
                        const T    *_pmc, 
-                       const T    *_pvi, 
                        const T    _num_mod,
                        const T    _num_ma) : 
-                   d_mod_ma_count(_mmc), d_pep_mod_idx(_pmi), d_pep_ma_count(_pmc), d_pep_valid_idx(_pvi), num_mod(_num_mod), num_ma(_num_ma) {}
+                   d_mod_ma_count(_mmc), d_pep_mod_idx(_pmi), d_pep_ma_count(_pmc), num_mod(_num_mod), num_ma(_num_ma) {}
 
     __host__ __device__ uint32_t operator() (T idx)
     {
-        uint32_t valid_idx = d_pep_valid_idx[idx / num_ma];
-        uint32_t mod_idx = d_pep_mod_idx[valid_idx];
+        uint32_t cand_idx = idx / num_ma;
+        uint32_t mod_idx = d_pep_mod_idx[cand_idx];
         uint32_t ma_idx  = idx % num_ma;
 
-        return choose(d_pep_ma_count[num_ma*valid_idx + ma_idx], 
+        return choose(d_pep_ma_count[num_ma*cand_idx + ma_idx], 
                       d_mod_ma_count[num_ma*mod_idx + ma_idx]);
     }
 };
@@ -140,8 +138,7 @@ calcTotalModCands
     const uint32_t    *d_pep_idx_raw,
     const uint32_t    *d_pep_mod_idx_raw,
     const uint32_t    *d_pep_ma_count_raw,
-    const uint32_t    *d_pep_valid_idx_raw,
-    const uint32_t    nPep,                             // number of peptides (unmodified)
+    const uint32_t    num_cand_massmod,                             // number of peptides (unmodified)
     const uint32_t    num_mod,
     const uint32_t    num_ma
 ) 
@@ -163,36 +160,35 @@ calcTotalModCands
     //thrust::device_ptr<const uint32_t>  d_pep_idx(d_pep_idx_raw);
     //thrust::device_ptr<const uint32_t>  d_pep_mod_idx(d_pep_mod_idx_raw);
     //thrust::device_ptr<const uint32_t>  d_pep_ma_count(d_pep_ma_count_raw);
-    //thrust::device_ptr<const uint32_t>  d_pep_valid_idx(d_pep_valid_idx_raw);
     
     // for each ma, find number of combinations possible
     // ie do a choose(number in peptide, number req for mod)
     thrust::counting_iterator<uint32_t> first(0);
-    thrust::counting_iterator<uint32_t> last = first + nPep*num_ma;
-    thrust::transform(first, last, d_out_pep_ma_num_comb, calcNumCombPerAcid<uint32_t>(d_mod_ma_count_raw, d_pep_mod_idx_raw, d_pep_ma_count_raw, d_pep_valid_idx_raw, num_mod, num_ma));
+    thrust::counting_iterator<uint32_t> last = first + num_cand_massmod*num_ma;
+    thrust::transform(first, last, d_out_pep_ma_num_comb, calcNumCombPerAcid<uint32_t>(d_mod_ma_count_raw, d_pep_mod_idx_raw, d_pep_ma_count_raw, num_mod, num_ma));
 
     // now determine the number of modified peptides per peptide 
     // by multiplying the number of combinations for each ma
     // at the same time fill out the _scan array
     //
     // Note: Tried this using thrust: scan_by_key, reduce_by_key and transform_iterator, but was slower
-    last = first + nPep;
+    last = first + num_cand_massmod;
     thrust::transform(first, last, d_out_pep_num_mpep, calcNumMPepPerPep<const uint32_t>(d_out_pep_ma_num_comb_raw, d_out_pep_ma_num_comb_scan_raw, num_ma));
 
 
 //#ifdef _DEBUG
     //// compare with calcNumModCand method
     //// malloc d_tmp
-    //thrust::device_ptr<uint32_t> d_tmp = thrust::device_malloc<uint32_t>(nPep);
+    //thrust::device_ptr<uint32_t> d_tmp = thrust::device_malloc<uint32_t>(num_cand_massmod);
     //thrust::transform(first, last, d_tmp, calcNumModCand<const uint32_t>(d_pep_ma_count_th, d_mod_ma_count_th, mod_num_ma));
 
     //// check tmp is same as d_pep_ma_count
-    //if (not thrust::equal(d_out_pep_num_mpep_th, d_out_pep_num_mpep_th + nPep, d_tmp))
+    //if (not thrust::equal(d_out_pep_num_mpep_th, d_out_pep_num_mpep_th + num_cand_massmod, d_tmp))
     //{
         //std::cerr << "pep_num_mpep doesn't seem to be correct" << std::endl;
         //////print scans
         ////std::cout << "ma_num_comb not scanned and scanned" << std::endl;
-        ////for (int i = 0; i < nPep; i++)               
+        ////for (int i = 0; i < num_cand_massmod; i++)               
         ////{
             ////std::cout << "pep ma num_comb and scan" << i << " ";
             ////for (int j = 0; j < mod_num_ma; j++)               
@@ -207,7 +203,7 @@ calcTotalModCands
         //////
         //////print
         ////std::cout << "pep_mpep_count " << std::endl;
-        ////for (int i = 0; i < nPep; i++)               
+        ////for (int i = 0; i < num_cand_massmod; i++)               
         ////{
             ////std::cout << d_out_pep_num_mpep_th[i] << std::endl;
         ////}
@@ -216,7 +212,7 @@ calcTotalModCands
     //thrust::device_free(d_tmp);
 //#endif
 
-    uint32_t num_mpep = thrust::reduce(d_out_pep_num_mpep, d_out_pep_num_mpep + nPep);
+    uint32_t num_mpep = thrust::reduce(d_out_pep_num_mpep, d_out_pep_num_mpep + num_cand_massmod);
 
 #ifdef _BENCH
     cudaThreadSynchronize();

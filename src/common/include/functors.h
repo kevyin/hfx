@@ -12,7 +12,8 @@ struct greaterThan : public thrust::unary_function<T,bool>
     __host__ __device__
     greaterThan(T _m) : bound(_m) {}
 
-    __host__ __device__ bool operator() (T x)
+    __host__ __device__ 
+    bool operator() (T x)
     {
         return (bound < x);
     }
@@ -27,6 +28,22 @@ struct minus_2tuple
     T operator() (Tuple x)
     {
         return thrust::get<0>(x) - thrust::get<1>(x);
+    }
+};
+
+template <typename T>
+struct mat_wider: public thrust::unary_function<size_t,T>
+{
+    T* col;
+    size_t wide;
+
+    __host__ __device__
+    mat_wider(T* _c, size_t _w) : col(_c), wide(_w) {}
+
+    __host__ __device__ 
+    T operator() (size_t i)
+    {
+        return col[i/wide];
     }
 };
 
