@@ -13,9 +13,10 @@
 #include "algorithms.h"
 #include "prepare_ions.h"
 
-#ifdef __TEST__
+#ifdef _TEST
 #include "tests.h"
 #include <thrust/for_each.h>
+#include <thrust/device_vector.h>
 #endif
 
 
@@ -55,12 +56,6 @@ prepare_ions_core
     const uint32_t  num_ma
 )
 {
-    #pragma unroll
-    for (size_t i = 0; i < NUM_PER_THREAD; ++i)
-    {
-        uint32_t j = 0;
-        d_ions[j] = 0;
-    }
     assert(BlockSize % WARP_SIZE == 0);
 
     const uint32_t thread_id       = blockDim.x * blockIdx.x + threadIdx.x;
@@ -110,9 +105,10 @@ void prepare_ions
     uint32_t num_ma
 ) 
 {
-#ifdef __TEST__
-    std::cerr << "Testing: prepare_ions" << std::endl
-    device_vector<uint8_t> d_ions_th = prepare_ions_test(d_ions, N, d_ma, num_ma);
+#ifdef _TEST
+    std::cerr << "Testing: prepare_ions" << std::endl;
+    thrust::device_vector<uint8_t> d_ions_th = prepare_ions_test(d_ions, N, d_ma, num_ma);
+    thrust::device_ptr<uint8_t> d_ions_(d_ions);
 #endif
     uint32_t blocks;
     uint32_t threads;
@@ -121,10 +117,10 @@ void prepare_ions
     prepare_ions_control(N,blocks,threads);
     prepare_ions_core<false><<<blocks,threads>>>(d_ions, N, d_ma, num_ma);
 
-#ifdef __TEST__
-    bool eq = equal(d_ions_th.begin(), d_ions_th.end(), device_ptr<uint8_t>(d_ions));
+#ifdef _TEST
+    bool eq = equal(d_ions_th.begin(), d_ions_th.end(), thrust::device_ptr<uint8_t>(d_ions));
     if (!eq) {
-        std::cerr << "TEST: prepare_ions failed" << std::endl
+        std::cerr << "TEST: prepare_ions failed" << std::endl;
         exit(1);
     }
 #endif

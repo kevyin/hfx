@@ -195,7 +195,7 @@ addIons_core
             /*
              * Load the ion mass, and propagate the partial scan results
              */
-            b_mass = getAAMass<UseCache>(d_mass, d_ions[j]);
+            b_mass = getAAMass<UseCache>(d_mass, GET_ACID_CHAR(d_ions[j]));
 
             if (thread_lane == 0)
                 b_mass += s_data[threadIdx.x + (WARP_SIZE-1)];

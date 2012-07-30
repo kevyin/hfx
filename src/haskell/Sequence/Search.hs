@@ -83,8 +83,6 @@ type SearchSection = (Int, Int)
 --
 searchForMatches :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
 searchForMatches cp ep sdb ddb hmi dmi ms2 = do
-  let (num_ma, d_ma, _) = devModAcids dmi
-  CUDA.prepareIons (devIons ddb) (numIons ddb) d_ma num_ma
   --putTraceMsg $ " dbion length " ++ show (G.length $ dbIon sdb)
   --return []
   (t,matches) <- bracketTime $ searchWithoutMods cp ep sdb ddb ms2 

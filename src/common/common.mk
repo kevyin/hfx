@@ -155,6 +155,12 @@ ifeq ($(emu),1)
     CFLAGS      += -D__DEVICE_EMULATION__
 endif
 
+# Device test configuration
+ifeq ($(test),1)
+    NVCCFLAGS   += -D_TEST
+    CXXFLAGS    += -D_TEST
+    CFLAGS      += -D_TEST
+endif
 # Device benchmark configuration
 ifeq ($(bench),1)
     NVCCFLAGS   += -D_BENCH

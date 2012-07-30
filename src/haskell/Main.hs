@@ -36,6 +36,7 @@ import Prelude                          hiding ( lookup, catch )
 
 import qualified Data.Vector.Generic    as G
 import qualified Foreign.CUDA           as CUDA
+import qualified Foreign.CUDA.Algorithms as CUDA    (prepareIons)  
 
 
 --------------------------------------------------------------------------------
@@ -78,10 +79,13 @@ main = do
   let hmi = makeModInfo cp'
   --(t2,allMatches') <- bracketTime $ forM dbs $ \db -> do
   (t2, allMatches') <- bracketTime $ withDeviceDB cp' db $ \ddb -> 
-      withDevModInfo ddb hmi $ \dmi -> forM dta $ \f -> do
-        matches <- search cp' db hmi dmi ddb f
-        when (showMatchesPerScan cp) $ printScanResults cp' f matches
-        return matches
+      withDevModInfo ddb hmi $ \dmi -> do
+        let (num_ma, d_ma, _) = devModAcids dmi
+        CUDA.prepareIons (devIons ddb) (numIons ddb) d_ma num_ma
+        forM dta $ \f -> do
+            matches <- search cp' db hmi dmi ddb f
+            when (showMatchesPerScan cp) $ printScanResults cp' f matches
+            return matches
   when (verbose cp) $ hPutStrLn stderr ("Search Elapsed time: " ++ showTime t2)
           
 

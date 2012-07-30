@@ -5,8 +5,6 @@
  * License   : BSD
  *
  * ---------------------------------------------------------------------------*/
-#ifndef __TEST__
-#define __TEST__
 
 #include <thrust/for_each.h>
 #include <stdint.h>
@@ -56,4 +54,3 @@ device_vector<uint8_t> prepare_ions_test(uint8_t* _d_ions, uint32_t N, uint8_t* 
     return d_res;
 }
 
-#endif // __TEST__

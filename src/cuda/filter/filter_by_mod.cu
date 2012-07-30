@@ -213,7 +213,7 @@ struct fillPepMACount: public thrust::unary_function<T, T>
         uint8_t ma  = d_ma[ma_idx];
         T count   = 0;
         for (T a = d_tc[pep_idx] ; a < d_tn[pep_idx]; ++a) {
-            uint8_t ion = d_ions[a];    
+            uint8_t ion = GET_ACID_CHAR(d_ions[a]);    
             if (ion == ma) {
                 count++;
             }

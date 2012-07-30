@@ -252,11 +252,11 @@ addModIons_core
             for (int m = 0; m < NumMA; m++) 
             {
                 uint32_t count = 0;
-                if (d_ma[m] == d_ions[j]) 
-                {
+                uint8_t mod = GET_ACID_MOD(d_ions[j]);
+                if (mod != 0) {
                     is_ma = true;
                     count = 1;
-                    ma_idx = m;
+                    ma_idx = mod- 1; 
                 }
 
                 if (thread_lane == 0) {
@@ -274,14 +274,14 @@ addModIons_core
 
             if (is_ma && modded)
             {
-                b_mass = getAAMass<UseCache>(d_mass, d_ions[j]) + d_ma_mass[ma_idx];
+                b_mass = getAAMass<UseCache>(d_mass, GET_ACID_CHAR(d_ions[j])) + d_ma_mass[ma_idx];
 #ifdef DEBUG
-                d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j] + 32;
+                d_mions[row*MAX_PEP_LEN + j - row_start] = GET_ACID_CHAR(d_ions[j]) + 32;
 #endif
             } else {
-                b_mass = getAAMass<UseCache>(d_mass, d_ions[j]);
+                b_mass = getAAMass<UseCache>(d_mass, GET_ACID_CHAR(d_ions[j]));
 #ifdef DEBUG
-                d_mions[row*MAX_PEP_LEN + j - row_start] = d_ions[j];
+                d_mions[row*MAX_PEP_LEN + j - row_start] = GET_ACID_CHAR(d_ions[j]);
 #endif
             }
 //#ifdef DEBUG

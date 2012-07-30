@@ -89,12 +89,12 @@
  *      where 0 is no modification
  *      1-7 is the 1st, 2nd .. 7th modification
  */
-#define GET_ACID_CHAR(i)        (i & 0x1FU) + 'A';
-#define GET_ACID_CHAR_IDX(i)    (i & 0x1FU);
+#define GET_ACID_CHAR(i)        ((i & 0x1FU) + 'A')
+#define GET_ACID_CHAR_IDX(i)    ((i & 0x1FU))
 #define SET_ACID_CHAR(i,c)      i = (i & 0xE0U) | (c - 'A'); 
-#define SET_ACID_CHAR_IDX(i,ci)  i = (i & 0xE0U) | ci; 
+#define SET_ACID_CHAR_IDX(i,ci) i = (i & 0xE0U) | ci; 
 
-#define GET_ACID_MOD(i)         (i & 0xE0U) >> 5;
+#define GET_ACID_MOD(i)         ((i & 0xE0U) >> 5)
 #define SET_ACID_MOD(i,m)       i = (i & 0x1FU) | m << 5; 
 
 #define SET_ACID_CHAR_MOD(i,c,m) i = (c - 'A') | m << 5;
