@@ -75,6 +75,30 @@
         CUDA_SAFE_CALL_NO_SYNC(cudaThreadSynchronize());                       \
     } while (0)
 
+/*
+ * get and set acid chars with range('A'-'Z') and mods with range(0-7)
+ * Expects data to be packed into 8 bit datatype eg uint8_t
+ * (from least significant to most significant) 
+ *  The first 5 bits are for the numbers 0-25 corresponding to the alphabet
+ *  The last 3 bits are for the numbers 0-7 and represent a modification
+ * 
+ * The acid character is a letter representing the amino acid 'A' - 'Z'
+ * The acid character idx is a number 0-25 representing the above letter (acid)
+ *
+ * The acid mod is a number 0-7
+ *      where 0 is no modification
+ *      1-7 is the 1st, 2nd .. 7th modification
+ */
+#define GET_ACID_CHAR(i)        (i & 0x1FU) + 'A';
+#define GET_ACID_CHAR_IDX(i)    (i & 0x1FU);
+#define SET_ACID_CHAR(i,c)      i = (i & 0xE0U) | (c - 'A'); 
+#define SET_ACID_CHAR_IDX(i,ci)  i = (i & 0xE0U) | ci; 
+
+#define GET_ACID_MOD(i)         (i & 0xE0U) >> 5;
+#define SET_ACID_MOD(i,m)       i = (i & 0x1FU) | m << 5; 
+
+#define SET_ACID_CHAR_MOD(i,c,m) i = (c - 'A') | m << 5;
+#define SET_ACID_CHAR_IDX_MOD(i,ci,m) i = ci | m << 5;
 
 #ifdef __cplusplus
 extern "C" {

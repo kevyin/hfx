@@ -12,6 +12,7 @@
 
 module Foreign.CUDA.Algorithms
   (
+    prepareIons,
     findIndicesInRange, findModablePeptides, findBeginEnd,
     calcTotalModCands, prepareGenMod, genModCands,
     addIons, addModIons, 
@@ -26,6 +27,20 @@ import Foreign
 import Foreign.CUDA                             (DevicePtr, withDevicePtr)
 import Foreign.CUDA.BLAS as CUBLAS
 
+prepareIons :: DevicePtr Word8      --- ^ d_ions
+            -> Int                  --- ^ num_ions 
+            -> DevicePtr Word8      --- ^ d_ma 
+            -> Int                  --- ^ num_ma 
+            -> IO ()
+prepareIons a1 a2 a3 a4 =
+  withDevicePtr a1 $ \a1' ->
+  -- withDevicePtr a2 $ \a2' ->
+  withDevicePtr a3 $ \a3' ->
+  -- withDevicePtr a4 $ \a4' ->
+  prepareIons'_ a1' (cIntConv a2) a3' (cIntConv a4)
+
+foreign import ccall unsafe "algorithms.h prepare_ions"
+  prepareIons'_ :: Ptr Word8 -> Word32 -> Ptr Word8 -> Word32 -> IO () 
 
 findIndicesInRange :: DevicePtr Float -> DevicePtr Word32 -> Int -> Float -> Float -> IO Int
 findIndicesInRange a1 a2 a3 a4 a5 =

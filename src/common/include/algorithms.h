@@ -71,6 +71,15 @@ filterInRange_f
 );
 #endif
 
+void 
+prepare_ions
+(
+    uint8_t* d_ions, 
+    uint32_t N, 
+    uint8_t* d_ma, 
+    uint32_t num_ma
+);
+
 uint32_t
 findIndicesInRange_f
 (

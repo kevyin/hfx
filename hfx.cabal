@@ -61,9 +61,9 @@ Executable hfx
   include-dirs:        src/common/include
 
   if flag(debug)
-    extra-libraries:   filterD ion_seriesD mvmD sortD gen_mod_pepD
+    extra-libraries:   filterD ion_seriesD mvmD sortD gen_mod_pepD miscD
   else
-    extra-libraries:   filter  ion_series  mvm  sort gen_mod_pep
+    extra-libraries:   filter  ion_series  mvm  sort gen_mod_pep misc
 
   -- Modules not exported by this package.
   -- Other-modules:
@@ -85,7 +85,7 @@ Executable generate-peptides
   include-dirs:        src/common/include
 
   if flag(debug)
-    extra-libraries:   filterD ion_seriesD mvmD sortD gen_mod_pepD
+    extra-libraries:   filterD ion_seriesD mvmD sortD gen_mod_pepD miscD
   else
-    extra-libraries:   filter  ion_series  mvm  sort gen_mod_pep
+    extra-libraries:   filter  ion_series  mvm  sort gen_mod_pep misc
 
