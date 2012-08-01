@@ -118,22 +118,8 @@ prepareGenMod
 
     thrust::exclusive_scan(d_mpep_mod_ma_count_sum.begin(), d_mpep_mod_ma_count_sum.end(), d_out_mpep_mod_ma_count_sum_scan_th);
 
+    const uint32_t ma_total = d_out_mpep_mod_ma_count_sum_scan_th[num_mpep-1] + d_mpep_mod_ma_count_sum[num_mpep-1];
 
-    //thrust::device_ptr<uint32_t> d_out_mpep_pep_idx_th(d_out_mpep_pep_idx);
-    //thrust::device_ptr<uint32_t> d_out_mpep_rank_th(d_out_mpep_rank);
-    //for (uint32_t i = 0; i < num_mpep; ++i) {
-        //std::cout << "pep_idx " << d_out_mpep_pep_idx_th[i] << " rank " << d_out_mpep_rank_th[i] 
-        //<< " mpep_mod_ma_count_sum " << d_out_mpep_mod_ma_count_sum_th[i] << " " << d_out_mpep_mod_ma_count_sum_scan_th[i] << std::endl;        
-    //}
-
-    const uint32_t ma_total = thrust::reduce(d_mpep_mod_ma_count_sum.begin(), d_mpep_mod_ma_count_sum.end());
-    //std::cout << d_out_mpep_mod_ma_count_sum_th[num_mpep - 1] << " ma_total" << ma_total << std::endl;
-    //
-    //thrust::device_ptr<const uint32_t> d_mpep_mod_ma_count_sum_scan_th(d_out_mpep_mod_ma_count_sum_scan);
-    //for (uint32_t i = 0; i < 8; i++) {
-        //std::cout << " ma_num_comb_scan " << d_mpep_mod_ma_count_sum_scan_th[i] << std::endl;
-    //}
-    //std::cout << " ma_total " << ma_total << " lat count " << d_out_mpep_mod_ma_count_sum_th[num_mpep-1] << std::endl;
 #ifdef _BENCH
     cudaThreadSynchronize();
     time(&t_end);
