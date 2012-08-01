@@ -83,7 +83,6 @@ prepareGenMod
     uint32_t          *d_out_mpep_pep_mod_idx,
     uint32_t          *d_out_mpep_rank,
     uint32_t          *d_out_mpep_ith_cand,
-    uint32_t          *d_out_mpep_mod_ma_count_sum,
     uint32_t          *d_out_mpep_mod_ma_count_sum_scan,
 
     const uint32_t    *d_mod_ma_count_sum,
@@ -106,18 +105,18 @@ prepareGenMod
     //printGPUMemoryUsage();
 
     thrust::device_ptr<const uint32_t> d_pep_num_mpep_th(d_pep_num_mpep);
+    thrust::device_ptr<uint32_t> d_out_mpep_mod_ma_count_sum_scan_th(d_out_mpep_mod_ma_count_sum_scan);
 
     thrust::device_vector<uint32_t> d_pep_num_mpep_scan(num_cand);
+    thrust::device_vector<uint32_t> d_mpep_mod_ma_count_sum(num_mpep);
 
     thrust::exclusive_scan(d_pep_num_mpep_th, d_pep_num_mpep_th + num_cand, d_pep_num_mpep_scan.begin());
 
     thrust::counting_iterator<uint32_t> first(0);
     thrust::counting_iterator<uint32_t> last = first + num_cand;
-    thrust::for_each(first, last, prepare<const uint32_t>(d_out_mpep_pep_idx, d_out_mpep_pep_mod_idx, d_out_mpep_rank, d_out_mpep_ith_cand, d_out_mpep_mod_ma_count_sum, d_mod_ma_count_sum, d_pep_idx, d_pep_mod_idx, d_pep_num_mpep, d_pep_num_mpep_scan.data().get())); 
+    thrust::for_each(first, last, prepare<const uint32_t>(d_out_mpep_pep_idx, d_out_mpep_pep_mod_idx, d_out_mpep_rank, d_out_mpep_ith_cand, d_mpep_mod_ma_count_sum.data().get(), d_mod_ma_count_sum, d_pep_idx, d_pep_mod_idx, d_pep_num_mpep, d_pep_num_mpep_scan.data().get())); 
 
-    thrust::device_ptr<uint32_t> d_out_mpep_mod_ma_count_sum_scan_th(d_out_mpep_mod_ma_count_sum_scan);
-    thrust::device_ptr<uint32_t> d_out_mpep_mod_ma_count_sum_th(d_out_mpep_mod_ma_count_sum);
-    thrust::exclusive_scan(d_out_mpep_mod_ma_count_sum_th, d_out_mpep_mod_ma_count_sum_th + num_mpep, d_out_mpep_mod_ma_count_sum_scan_th);
+    thrust::exclusive_scan(d_mpep_mod_ma_count_sum.begin(), d_mpep_mod_ma_count_sum.end(), d_out_mpep_mod_ma_count_sum_scan_th);
 
 
     //thrust::device_ptr<uint32_t> d_out_mpep_pep_idx_th(d_out_mpep_pep_idx);
@@ -127,7 +126,7 @@ prepareGenMod
         //<< " mpep_mod_ma_count_sum " << d_out_mpep_mod_ma_count_sum_th[i] << " " << d_out_mpep_mod_ma_count_sum_scan_th[i] << std::endl;        
     //}
 
-    const uint32_t ma_total = thrust::reduce(d_out_mpep_mod_ma_count_sum_th, d_out_mpep_mod_ma_count_sum_th + num_mpep);
+    const uint32_t ma_total = thrust::reduce(d_mpep_mod_ma_count_sum.begin(), d_mpep_mod_ma_count_sum.end());
     //std::cout << d_out_mpep_mod_ma_count_sum_th[num_mpep - 1] << " ma_total" << ma_total << std::endl;
     //
     //thrust::device_ptr<const uint32_t> d_mpep_mod_ma_count_sum_scan_th(d_out_mpep_mod_ma_count_sum_scan);

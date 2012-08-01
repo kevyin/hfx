@@ -153,7 +153,6 @@ prepareGenMod
     uint32_t          *d_out_mpep_pep_mod_idx,
     uint32_t          *d_out_mpep_rank,
     uint32_t          *d_out_mpep_ith_valid,
-    uint32_t          *d_out_mpep_mod_ma_count_sum,
     uint32_t          *d_out_mpep_mod_ma_count_sum_scan,
 
     const uint32_t    *d_mod_ma_count_sum,

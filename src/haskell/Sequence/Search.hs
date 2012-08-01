@@ -202,14 +202,13 @@ genModCandidates cp ddb dmi (num_cand_massmod, d_pep_idx, d_pep_mod_idx, d_pep_m
   CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb_scan d_mod_ma_count d_pep_idx d_pep_mod_idx d_pep_ma_count num_cand_massmod num_mod num_ma >>= \num_mpep -> 
 
   CUDA.mallocArray num_mpep >>= \d_mpep_rank ->               
-  CUDA.mallocArray num_mpep >>= \d_mpep_ith_cand->           
-  CUDA.mallocArray num_mpep >>= \d_mpep_mod_ma_count_sum ->   
+  CUDA.mallocArray num_mpep >>= \d_mpep_ith_cand ->           
 
   CUDA.allocaArray num_mpep $ \d_mpep_pep_idx -> --
   CUDA.allocaArray num_mpep $ \d_mpep_pep_mod_idx -> --
   CUDA.allocaArray num_mpep $ \d_mpep_mod_ma_count_sum_scan -> --
 
-  CUDA.prepareGenMod d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_rank d_mpep_ith_cand d_mpep_mod_ma_count_sum d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_num_mpep num_cand_massmod num_mpep >>= \ len_unrank ->
+  CUDA.prepareGenMod d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_rank d_mpep_ith_cand d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_num_mpep num_cand_massmod num_mpep >>= \ len_unrank ->
 
   CUDA.allocaArray (len_unrank) $ \d_mpep_unrank -> do --
     CUDA.genModCands d_mpep_unrank d_mod_ma_count d_mpep_ith_cand d_mpep_rank d_mpep_mod_ma_count_sum_scan d_pep_mod_idx d_pep_ma_count d_pep_ma_num_comb_scan num_mpep num_ma 
@@ -219,7 +218,6 @@ genModCandidates cp ddb dmi (num_cand_massmod, d_pep_idx, d_pep_mod_idx, d_pep_m
     CUDA.free d_pep_ma_num_comb_scan
     CUDA.free d_mpep_rank
     CUDA.free d_mpep_ith_cand
-    CUDA.free d_mpep_mod_ma_count_sum
 
     action (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank)
 
