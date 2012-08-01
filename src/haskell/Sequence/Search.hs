@@ -198,25 +198,24 @@ genModCandidates cp ddb dmi (num_cand_massmod, d_pep_idx, d_pep_mod_idx, d_pep_m
 
   -- calc number of modified peps generated from each pep
   CUDA.mallocArray num_cand_massmod          >>= \d_pep_num_mpep ->         -- number of modified peptides for each peptide
-  CUDA.mallocArray (num_cand_massmod*num_ma) >>= \d_pep_ma_num_comb ->      -- for each modable acid: number of ways to choose it ie choose(num in pep, num in mod)
   CUDA.mallocArray (num_cand_massmod*num_ma) >>= \d_pep_ma_num_comb_scan -> -- above scaned for each peptide
-  CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb d_pep_ma_num_comb_scan d_mod_ma_count d_pep_idx d_pep_mod_idx d_pep_ma_count num_cand_massmod num_mod num_ma >>= \num_mpep -> 
+  CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb_scan d_mod_ma_count d_pep_idx d_pep_mod_idx d_pep_ma_count num_cand_massmod num_mod num_ma >>= \num_mpep -> 
 
   CUDA.mallocArray num_mpep >>= \d_mpep_rank ->               
   CUDA.mallocArray num_mpep >>= \d_mpep_ith_cand->           
   CUDA.mallocArray num_mpep >>= \d_mpep_mod_ma_count_sum ->   
-  CUDA.allocaArray num_mpep $ \d_mpep_pep_idx -> 
-  CUDA.allocaArray num_mpep $ \d_mpep_pep_mod_idx -> 
-  CUDA.allocaArray num_mpep $ \d_mpep_mod_ma_count_sum_scan -> 
+
+  CUDA.allocaArray num_mpep $ \d_mpep_pep_idx -> --
+  CUDA.allocaArray num_mpep $ \d_mpep_pep_mod_idx -> --
+  CUDA.allocaArray num_mpep $ \d_mpep_mod_ma_count_sum_scan -> --
 
   CUDA.prepareGenMod d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_rank d_mpep_ith_cand d_mpep_mod_ma_count_sum d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_num_mpep num_cand_massmod num_mpep >>= \ len_unrank ->
 
-  CUDA.allocaArray (len_unrank) $ \d_mpep_unrank -> do
+  CUDA.allocaArray (len_unrank) $ \d_mpep_unrank -> do --
     CUDA.genModCands d_mpep_unrank d_mod_ma_count d_mpep_ith_cand d_mpep_rank d_mpep_mod_ma_count_sum_scan d_pep_mod_idx d_pep_ma_count d_pep_ma_num_comb_scan num_mpep num_ma 
 
     -- free mallocs
     CUDA.free d_pep_num_mpep
-    CUDA.free d_pep_ma_num_comb
     CUDA.free d_pep_ma_num_comb_scan
     CUDA.free d_mpep_rank
     CUDA.free d_mpep_ith_cand

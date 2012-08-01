@@ -115,25 +115,24 @@ calcTotalModCands :: DevicePtr Word32
                   -> DevicePtr Word32
                   -> DevicePtr Word32
                   -> DevicePtr Word32
-                  -> DevicePtr Word32
                   {--> DevicePtr Word32-}
                   -> Int
                   -> Int
                   -> Int
                   -> IO Int
-calcTotalModCands a1 a2 a3 a4 a5 a6 a7 {-a8-} a9 a10 a11 =
+calcTotalModCands a1 {-a2-} a3 a4 a5 a6 a7 {-a8-} a9 a10 a11 =
   withDevicePtr a1 $ \a1' ->
-  withDevicePtr a2 $ \a2' ->
+  {-withDevicePtr a2 $ \a2' ->-}
   withDevicePtr a3 $ \a3' ->
   withDevicePtr a4 $ \a4' ->
   withDevicePtr a5 $ \a5' ->
   withDevicePtr a6 $ \a6' ->
   withDevicePtr a7 $ \a7' ->
   {-withDevicePtr a8 $ \a8' ->-}
-  cIntConv `fmap` calcTotalModCands'_ a1' a2' a3' a4' a5' a6' a7' {-a8'-} (cIntConv a9) (cIntConv a10) (cIntConv a11)
+  cIntConv `fmap` calcTotalModCands'_ a1' {-a2'-} a3' a4' a5' a6' a7' {-a8'-} (cIntConv a9) (cIntConv a10) (cIntConv a11)
 
 foreign import ccall unsafe "algorithms.h calcTotalModCands"
-  calcTotalModCands'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> {-Ptr Word32 ->-} Word32 -> Word32 -> Word32 -> IO Word32
+  calcTotalModCands'_ :: Ptr Word32 -> {-Ptr Word32 ->-} Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> {-Ptr Word32 ->-} Word32 -> Word32 -> Word32 -> IO Word32
 
 prepareGenMod :: DevicePtr Word32
               -> DevicePtr Word32
