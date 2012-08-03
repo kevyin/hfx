@@ -109,7 +109,7 @@ searchWithoutMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB 
 searchWithoutMods cp ep sdb ddb ms2s = 
   filterCandidatesByMass cp ddb masses $ \specCandidatesByMass@(num_spec_cand_total,_,_,_,_) -> 
   if num_spec_cand_total == 0 then return [] else
-  mkSpecXCorr ddb specCandidatesByMass ms2s lens $ \specThrys   -> return []
+  mkSpecXCorr ddb specCandidatesByMass ms2s lens $ \specThrys   -> do return []
   -- mapMaybe finish `fmap` sequestXC cp ep candidatesByMass spec specThry
   where
     specs         = map (sequestXCorr cp) ms2s
@@ -328,25 +328,25 @@ mkSpecXCorr ddb specCands ms2s lens action =
 -- |Score each candidate sequence against the observed intensity spectra,
 -- returning the most relevant results.
 --
-sequestXC :: ConfigParams -> ExecutionPlan -> CandidatesByMass -> Spectrum -> IonSeries -> IO [(Float,Int)]
-sequestXC cp ep (nIdx,d_idx) expr d_thry = let n' = max (numMatches cp) (numMatchesDetail cp) in
-  CUDA.withVector  expr $ \d_expr  ->
-  CUDA.allocaArray nIdx $ \d_score -> do
-    --when (verbose cp) $ hPutStrLn stderr ("Matched peptides: " ++ show nIdx)
+sequestXC :: ConfigParams -> ExecutionPlan -> CandidatesByMass -> [Spectrum] -> IonSeries -> IO [(Float,Int)]
+sequestXC cp ep (nIdx,d_idx) exprs d_thry = 
+  let n' = max (numMatches cp) (numMaochesDetail cp) 
+      all_exprs = U.concat exprs
+  in if num_spec_cand_total == 0 then return [] else
+  CUDA.withVector  all_exprs $ \d_all_exprs ->
+  CUDA.allocaArray num_spec_cand_total $ \d_score -> do
+    forM_ ([0..num_spec-1] spec_sum_len_scan spec_num_pep spec_lens) $ 
+      \(spec_idx, thry_start, num_pep, len) ->
 
-    -- There may be no candidates as a result of bad database search parameters,
-    -- or if something unexpected happened (out of memory)
-    --
+        -- Score and rank each candidate sequence
+        --
+        let m = num_pep 
+            n = len
+        let d_thry `CUDA.advanceDevPtr` thry_start
+        --CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr m n
 
-    -- Score and rank each candidate sequence
-    --
-    let m = nIdx
-        n = G.length expr
-
-    --CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr m n
-
-    -- Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T 
-    CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1
+        -- Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T 
+        CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry n d_expr 1 0 d_score 1
     CUDA.rsort d_score d_idx nIdx
 
     -- Retrieve the most relevant matches

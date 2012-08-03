@@ -28,8 +28,7 @@ void sort_idx_f(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N)
     thrust::device_ptr<float>    d_keys(d_keys_raw);
     thrust::device_ptr<uint32_t> d_idx(d_idx_raw);
 
-    thrust::counting_iterator<uint32_t> iter(0);
-    thrust::copy(iter, iter + N, d_idx);
+    thrust::sequence(d_idx, d_idx + N);
     thrust::sort_by_key(d_keys, d_keys + N, d_idx);
 }
 
