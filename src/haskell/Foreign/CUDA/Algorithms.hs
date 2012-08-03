@@ -13,7 +13,7 @@
 module Foreign.CUDA.Algorithms
   (
     prepareIons,
-    findIndicesInRange, findModablePeptides, findBeginEnd,
+    findIndicesInRange, findSpecCandsByMass, findModablePeptides, findBeginEnd,
     calcTotalModCands, prepareGenMod, genModCands,
     addIons, addModIons, 
     sort_val, sort_idx, rsort,
@@ -50,6 +50,23 @@ findIndicesInRange a1 a2 a3 a4 a5 =
 
 foreign import ccall unsafe "algorithms.h findIndicesInRange_f"
   findIndicesInRange'_ :: Ptr Float -> Ptr Word32 -> Word32 -> Float -> Float -> IO Word32
+
+findSpecCandsByMass :: DevicePtr Word32 -> DevicePtr Word32 -> DevicePtr Word32 -> DevicePtr Float -> DevicePtr Word32 -> Int -> DevicePtr Float -> Int -> Float -> IO Int
+findSpecCandsByMass a1 a2 a3 a4 a5 a6 a7 a8 a9 =
+  withDevicePtr a1 $ \a1' ->
+  withDevicePtr a2 $ \a2' ->
+  withDevicePtr a3 $ \a3' ->
+  withDevicePtr a4 $ \a4' ->
+  withDevicePtr a5 $ \a5' ->
+  -- withDevicePtr a6 $ \a6' ->
+  withDevicePtr a7 $ \a7' ->
+  -- withDevicePtr a8 $ \a8' ->
+  cIntConv `fmap` findSpecCandsByMass'_ a1' a2' a3' a4' a5' (cIntConv a6) a7' (cIntConv a8) a9 
+
+foreign import ccall unsafe "algorithms.h findSpecCandsByMass"
+  findSpecCandsByMass'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Float -> Ptr Word32 -> Word32 -> Ptr Float -> Word32 -> Float -> IO Word32 
+
+
  
 findBeginEnd :: DevicePtr Word32 -> DevicePtr Word32 -> {-DevicePtr Word32 ->-} DevicePtr Word32 -> DevicePtr Float -> DevicePtr Word32 -> Int -> DevicePtr Float -> Int -> Float -> Float -> IO Int
 findBeginEnd a1 a2 {-a3-} a4 a5 a6 a7 a8 a9 a10 a11 =

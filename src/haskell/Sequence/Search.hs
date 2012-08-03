@@ -26,6 +26,7 @@ module Sequence.Search (searchForMatches) where
 import Mass
 import Config
 import Spectrum
+import Spectrum.Data
 import Sequence.Match
 import Sequence.Fragment
 import Sequence.Location
@@ -43,6 +44,7 @@ import System.IO
 import Prelude                                  hiding (lookup)
 
 import Foreign (sizeOf)
+import Foreign.Marshal.Array (withArray) 
 import Foreign.CUDA (DevicePtr)
 import qualified Data.Vector.Generic            as G
 import qualified Data.Vector.Unboxed            as U
@@ -56,6 +58,7 @@ import Debug.Trace
 
 -- |Used only for search without mods. Candidates within mass limits
 type CandidatesByMass = (Int, DevicePtr Word32)
+type SpecCandidatesByMass = (Int, Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
 
 -- |
 type CandidatesByModMass = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
@@ -81,45 +84,50 @@ type SearchSection = (Int, Int)
 -- |Search an amino acid sequence database to find the most likely matches to a
 -- given experimental spectrum.
 --
-searchForMatches :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
-searchForMatches cp ep sdb ddb hmi dmi ms2 = do
+searchForMatches :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> [MS2Data] -> IO [(MS2Data, MatchCollection)]
+searchForMatches cp ep sdb ddb hmi dmi ms2s = do
   --putTraceMsg $ " dbion length " ++ show (G.length $ dbIon sdb)
   --return []
-  (t,matches) <- bracketTime $ searchWithoutMods cp ep sdb ddb ms2 
-  --when (verbose cp) $ hPutStrLn stderr ("Search Without Modifications Elapsed time: " ++ showTime t)
+  (t,matches) <- bracketTime $ searchWithoutMods cp ep sdb ddb ms2s
+      --when (verbose cp) $ hPutStrLn stderr ("Search Without Modifications Elapsed time: " ++ showTime t)
 
-  (t2,matchesMods) <- bracketTime $ case dmi of
-                    NoDMod -> return []
-                    _      -> searchWithMods cp ep sdb ddb hmi dmi ms2 
-  --when (verbose cp) $ hPutStrLn stderr ("Search With Modifications Elapsed time: " ++ showTime t2)
+      
+      --when (verbose cp) $ hPutStrLn stderr ("Search With Modifications Elapsed time: " ++ showTime t2)
 
-  return $ sortBy matchScoreOrder $ matches ++ matchesMods
+  {-results <- forM (zip3 ms2s matches matchesMods $ \(ms2, m, mm) -> do-}
+  results <- forM (zip ms2s matches) $ \(ms2, m) -> do
+      (t2,mm) <- bracketTime $ case dmi of
+                        NoDMod -> return []
+                        _      -> searchWithMods cp ep sdb ddb hmi dmi ms2 
+      return $ (ms2,sortBy matchScoreOrder $ m ++ mm)
+  return results 
 
 --
 -- |Search without modifications
 --
-searchWithoutMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> MS2Data -> IO MatchCollection
-searchWithoutMods cp ep sdb ddb ms2 =
-  filterCandidateByMass cp ddb mass                                     $ \candidatesByMass@(nIdx,_) -> 
-  if nIdx  == 0 then return [] else
-  mkSpecXCorr ddb candidatesByMass (ms2charge ms2) (G.length spec)      $ \specThry   -> 
-  mapMaybe finish `fmap` sequestXC cp ep candidatesByMass spec specThry
+searchWithoutMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> [MS2Data] -> IO [MatchCollection]
+searchWithoutMods cp ep sdb ddb ms2s = 
+  filterCandidatesByMass cp ddb masses $ \specCandidatesByMass@(num_spec_cand_total,_,_,_,_) -> 
+  if num_spec_cand_total == 0 then return [] else
+  mkSpecXCorr ddb specCandidatesByMass ms2s lens $ \specThrys   -> return []
+  -- mapMaybe finish `fmap` sequestXC cp ep candidatesByMass spec specThry
   where
-    spec          = sequestXCorr cp ms2
-    peaks         = extractPeaks spec
+    specs         = map (sequestXCorr cp) ms2s
+    lens          = map G.length specs
+    {-peaks         = extractPeaks specs-}
 
-    finish (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)
-    sp            = matchIonSequence cp (ms2charge ms2) peaks
-    mass          = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
+    {-finish (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)-}
+    {-sp            = matchIonSequence cp (ms2charge ms2) peaks-}
+    masses        = map ms2Mass ms2s
 
 --
 -- |Search with modifications
 --
 searchWithMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
 searchWithMods cp ep sdb ddb hmi dmi ms2 = 
-  let mass = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
+  let mass = ms2Mass ms2
   in
-  filterCandidateByModMass cp ddb dmi mass                $ \candsByModMass@(num_cand_mass, _, _, _) -> 
+  filterCandidatesByModMass cp ddb dmi mass                $ \candsByModMass@(num_cand_mass, _, _, _) -> 
   if num_cand_mass == 0 then return [] else
   filterCandidatesByModability cp ddb dmi candsByModMass  $ \candsByMassAndMod@(num_cand_massmod,_,_,_) -> 
   if num_cand_massmod == 0 then return [] else
@@ -139,20 +147,28 @@ searchWithMods cp ep sdb ddb hmi dmi ms2 =
 -- This generates a device array containing the indices of the relevant
 -- sequences, together with the number of candidates found.
 --
-filterCandidateByMass :: ConfigParams -> DeviceSeqDB -> Float -> (CandidatesByMass -> IO b) -> IO b
-filterCandidateByMass cp db mass action =
-  CUDA.allocaArray np $ \d_idx -> -- do
-  CUDA.findIndicesInRange (devResiduals db) d_idx np (mass-eps) (mass+eps) >>= \n -> action (n,d_idx)
+filterCandidatesByMass :: ConfigParams -> DeviceSeqDB -> [Float] -> (SpecCandidatesByMass -> IO b) -> IO b
+filterCandidatesByMass cp ddb masses action =
+  let d_pep_idx_r_sorted = devResIdxSort ddb
+      num_spec           = length masses
+  in 
+  CUDA.allocaArray num_spec $ \d_spec_begin -> 
+  CUDA.allocaArray num_spec $ \d_spec_end -> 
+  CUDA.allocaArray num_spec $ \d_spec_num_pep -> 
+  CUDA.withVector  (U.fromList masses)   $ \d_spec_masses -> 
+
+  CUDA.findSpecCandsByMass d_spec_begin d_spec_end d_spec_num_pep (devResiduals ddb) d_pep_idx_r_sorted np d_spec_masses num_spec eps >>= \num_spec_cand_total -> 
+    action(num_spec_cand_total, num_spec, d_spec_begin, d_spec_end, d_spec_num_pep)
   where
-    np  = numFragments db
+    np  = numFragments ddb
     eps = massTolerance cp
 
 --
 -- |For each modification and it's mass delta, find suitable peptides
 -- Do this by finding begin and end indices to a list of peptides sorted by residual mass
 --
-filterCandidateByModMass :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> Float -> (CandidatesByModMass -> IO b) -> IO b
-filterCandidateByModMass cp ddb dmi mass action =
+filterCandidatesByModMass :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> Float -> (CandidatesByModMass -> IO b) -> IO b
+filterCandidatesByModMass cp ddb dmi mass action =
   let (num_mod, _, _, d_mod_delta) = devModCombs dmi 
       d_pep_idx_r_sorted = devResIdxSort ddb
   in
@@ -284,18 +300,28 @@ mkModSpecXCorr db dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unra
 -- On the device, this is stored as a dense matrix, each row corresponding to a
 -- single sequence.
 --
-mkSpecXCorr :: DeviceSeqDB -> CandidatesByMass -> Float -> Int -> (IonSeries -> IO b) -> IO b
-mkSpecXCorr db (nIdx, d_idx) chrg len action =
-  CUDA.allocaArray n $ \d_spec -> do
-    let bytes = fromIntegral $ n * CUDA.sizeOfPtr d_spec
+mkSpecXCorr :: DeviceSeqDB -> SpecCandidatesByMass -> [MS2Data] -> [Int] -> (IonSeries -> IO b) -> IO b
+mkSpecXCorr ddb specCands ms2s lens action =
+  let (num_spec_cand_total, num_spec, 
+       d_spec_begin, d_spec_end, d_spec_num_pep) = specCands
+      chrgs = map ms2charge ms2s
+      d_pep_idx_r_sorted = devResIdxSort ddb
+  in do
+    spec_num_pep <- CUDA.peekListArray num_spec d_spec_num_pep
+    spec_begin   <- CUDA.peekListArray num_spec d_spec_begin
 
-    CUDA.memset  d_spec bytes 0
-    CUDA.addIons d_spec (devResiduals db) (devMassTable db) (devIons db) (devTerminals db) d_idx nIdx ch len
+    let spec_sum_len_scan = scanl (+) 0 $ map (\(a,b) -> (fromIntegral a) * b) (zip lens spec_num_pep) 
+        total_len    = fromIntegral $ last spec_sum_len_scan 
+        max_chs = map (\chrg -> round $ max 1 (chrg - 1)) chrgs
 
-    action d_spec
-  where
-    n  = len * nIdx
-    ch = round $ max 1 (chrg - 1)
+    CUDA.allocaArray total_len $ \d_specs -> do
+      let bytes = fromIntegral $ total_len * CUDA.sizeOfPtr d_specs
+      CUDA.memset  d_specs bytes 0
+      forM_ (zip4 [0..num_spec-1] spec_num_pep max_chs lens) $ 
+        \(spec_idx, num_idx, chrg, len) -> do
+          let d_idx = d_pep_idx_r_sorted `CUDA.advanceDevPtr` (fromIntegral $ spec_begin !! spec_idx) 
+          CUDA.addIons d_specs (devResiduals ddb) (devMassTable ddb) (devIons ddb) (devTerminals ddb) d_idx (fromIntegral num_idx) chrg len
+      action (d_specs)
 
 
 --

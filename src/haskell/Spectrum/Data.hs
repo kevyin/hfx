@@ -11,11 +11,12 @@
 
 module Spectrum.Data
   (
-    MS2Data(..), Peak,
+    MS2Data(..), Peak, ms2Mass,
     Spectrum, SpectrumCollection(..),
   )
   where
 
+import Mass
 import Data.ByteString.Lazy             (ByteString)
 import qualified Data.Vector.Unboxed    as U
 
@@ -53,4 +54,7 @@ data MS2Data  = MS2Data
     ms2data      :: U.Vector Peak       -- The actual mass/charge ratio intensity measurements
   }
   deriving (Eq, Show)
+
+ms2Mass :: MS2Data -> Float
+ms2Mass ms2 = (ms2precursor ms2 * ms2charge ms2) - ((ms2charge ms2 - 1) * massH) - (massH + massH2O)
 
