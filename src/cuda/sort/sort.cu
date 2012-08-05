@@ -24,16 +24,16 @@ void sort_val_f(float *d_keys_raw, uint32_t *d_vals_raw, uint32_t N)
     thrust::sort_by_key(d_keys, d_keys + N, d_vals);
 }
 
-void sort_idx_f(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N)
+void sort_idx_f(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N, uint32_t init)
 {
     thrust::device_ptr<float>    d_keys(d_keys_raw);
     thrust::device_ptr<uint32_t> d_idx(d_idx_raw);
 
-    thrust::sequence(d_idx, d_idx + N);
+    thrust::sequence(d_idx, d_idx + N, init);
     thrust::sort_by_key(d_keys, d_keys + N, d_idx);
 }
 
-void sort_idx_rf(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N)
+void sort_idx_rf(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N, uint32_t init)
 {
 #ifdef _BENCH
     cudaThreadSynchronize();
@@ -44,10 +44,8 @@ void sort_idx_rf(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N)
     thrust::device_ptr<float>    d_keys(d_keys_raw);
     thrust::device_ptr<uint32_t> d_idx(d_idx_raw);
 
-    thrust::sequence(d_idx, d_idx + N);
+    thrust::sequence(d_idx, d_idx + N, init);
     thrust::sort_by_key(d_keys, d_keys+N, d_idx, thrust::greater<float>());
-
-    printGPUMemoryUsage();
 
 #ifdef _BENCH
     cudaThreadSynchronize();

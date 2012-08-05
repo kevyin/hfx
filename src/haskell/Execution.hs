@@ -15,7 +15,12 @@ module Execution
   )
   where
 
-import Foreign.CUDA.BLAS as CUBLAS
+import qualified Data.Vector.Unboxed  as U
+import Foreign.CUDA.BLAS    as CUBLAS
+import Foreign.CUDA         as CUDA
+import Sequence.Fragment 
+import Control.Exception
+import Data.Word
 
 
 --------------------------------------------------------------------------------
@@ -28,7 +33,8 @@ import Foreign.CUDA.BLAS as CUBLAS
 --
 data ExecutionPlan = ExecutionPlan
   {
-    cublasHandle :: CUBLAS.Handle
+    cublasHandle :: CUBLAS.Handle,
+    resIdxSort   :: U.Vector Int
   }
   --deriving (Show)
 
@@ -36,12 +42,12 @@ data ExecutionPlan = ExecutionPlan
 -- Actions
 --------------------------------------------------------------------------------
 
-withExecutionPlan :: (ExecutionPlan -> IO a) -> IO a
-withExecutionPlan action = do 
-    handle <- CUBLAS.create
-    res <- action $ ExecutionPlan handle
-    CUBLAS.destroy handle
-    return res
+withExecutionPlan :: DeviceSeqDB -> (ExecutionPlan -> IO a) -> IO a
+withExecutionPlan ddb action = do 
+  bracket CUBLAS.create CUBLAS.destroy $ \handle -> do
+    pep_idx_r_sorted' <- CUDA.peekListArray (numFragments ddb) (devResIdxSort ddb)
+    let pep_idx_r_sorted = U.map fromIntegral $ U.fromList pep_idx_r_sorted'
+    action $ ExecutionPlan handle pep_idx_r_sorted
 
 --------------------------------------------------------------------------------
 -- Parse a configuration file

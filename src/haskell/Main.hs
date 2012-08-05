@@ -117,7 +117,7 @@ search :: ConfigParams -> SequenceDB -> HostModInfo -> DeviceModInfo ->  DeviceS
 search cp db hmi dmi dev fp =
   readMS2Data fp >>= \r -> case r of
     Left  s -> hPutStrLn stderr s >>= \_ -> return []
-    Right d -> withExecutionPlan $ \ep -> do
+    Right d -> withExecutionPlan dev $ \ep -> do
       when (verbose cp) $ do
         --hPutStrLn stderr $ "Database: " ++ fp
         hPutStrLn stderr $ " # amino acids: " ++ (show . G.length . dbIon    $ db)
@@ -129,7 +129,7 @@ search cp db hmi dmi dev fp =
                          else if length xs > 0 then [xs] else []
           -- groupByN n _  = []
       -- allMatches <- forM (groupBy2 d) $ \ms2s -> do
-      allMatches <- forM (groupByN 20 d) $ \ms2s -> do
+      allMatches <- forM (groupByN 1 d) $ \ms2s -> do
         forM_ ms2s $ \ms2 -> do
             hPutStrLn stderr $ " searching scan: " ++ (show $ ms2info ms2)
         matches <- searchForMatches cp ep db dev hmi dmi ms2s

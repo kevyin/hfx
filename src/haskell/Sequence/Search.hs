@@ -44,8 +44,8 @@ import System.IO
 import Prelude                                  hiding (lookup)
 
 import Foreign (sizeOf)
-import Foreign.Marshal.Array (withArray) 
-import Foreign.CUDA (DevicePtr)
+import Foreign.Marshal.Array (peekArray) 
+import Foreign.CUDA (DevicePtr, withHostPtr)
 import qualified Data.Vector.Generic            as G
 import qualified Data.Vector.Unboxed            as U
 import qualified Foreign.CUDA                   as CUDA
@@ -74,7 +74,7 @@ type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32,
 type IonSeries  = DevicePtr Float
 
 -- |Theoretical spectrum information
-type SpecData = ([Int], [Int], [Int])
+type SpecData = ([Int], [Int], [Int], [Int])
 
 -- |A section (after a split) of the database to be searched 
 -- (start index to (r,c,n), num elements in section)
@@ -103,7 +103,7 @@ searchForMatches cp ep sdb ddb hmi dmi ms2s = do
       (t2,mm) <- bracketTime $ case dmi of
                         NoDMod -> return []
                         _      -> searchWithMods cp ep sdb ddb hmi dmi ms2 
-      return $ (ms2,sortBy matchScoreOrder $ m ++ mm)
+      return $ (ms2,sortBy matchScoreOrder $ (mm ++ m))
   return results 
 
 --
@@ -113,18 +113,29 @@ searchWithoutMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB 
 searchWithoutMods cp ep sdb ddb ms2s = 
   filterCandidatesByMass cp ddb masses $ \specCandidatesByMass@(num_spec_cand_total,_,_,_,_) -> 
   if num_spec_cand_total == 0 then return [] else
-  mkSpecXCorr ddb specCandidatesByMass ms2s lens $ \specThrys@(spec_data, thrys)   -> do 
-  _ <- sequestXC cp ep specs spec_data num_spec_cand_total thrys 
-  return []
+  mkSpecXCorr ddb specCandidatesByMass ms2s lens $ \specThrys -> do 
+      results <- sequestXC cp ep specs specThrys num_spec_cand_total 
+      {-let r = map finish' $ zip3 ms2s specs results-}
+      {-putTraceMsg $ show (head $ head r)-}
+      -- return [] 
+      return $ map finish' $ zip3 ms2s specs results 
   -- mapMaybe finish `fmap` sequestXC cp ep candidatesByMass spec specThry
+  
   where
     specs         = map (sequestXCorr cp) ms2s
     lens          = map G.length specs
-    {-peaks         = extractPeaks specs-}
-
-    {-finish (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)-}
-    {-sp            = matchIonSequence cp (ms2charge ms2) peaks-}
     masses        = map ms2Mass ms2s
+
+
+    finish' (ms2,spec,sxis) = mapMaybe finish sxis
+        where
+            finish (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)
+            sp f  = matchIonSequence cp (ms2charge ms2) (extractPeaks spec) f
+
+    {-finish' (ms2,spec,sxis) = -}
+      {-let finish (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)-}
+          {-sp f  = matchIonSequence cp (ms2charge ms2) (extractPeaks spec) f-}
+      {-in mapMaybe finish sxis-}
 
 --
 -- |Search with modifications
@@ -314,9 +325,10 @@ mkSpecXCorr ddb specCands ms2s lens action =
       d_pep_idx_r_sorted = devResIdxSort ddb
   in do
     spec_num_pep' <- CUDA.peekListArray num_spec d_spec_num_pep
-    spec_begin   <- CUDA.peekListArray num_spec d_spec_begin
+    spec_begin'   <- CUDA.peekListArray num_spec d_spec_begin
 
     let spec_num_pep = map fromIntegral spec_num_pep'
+        spec_begin   = map fromIntegral spec_begin'
         spec_sum_len_scan = scanl (+) 0 $ map (\(a,b) -> a * b) (zip lens spec_num_pep) 
         total_len    = last spec_sum_len_scan 
         max_chs = map (\chrg -> round $ max 1 (chrg - 1)) chrgs
@@ -326,17 +338,17 @@ mkSpecXCorr ddb specCands ms2s lens action =
       CUDA.memset  d_specs bytes 0
       forM_ (zip4 [0..num_spec-1] spec_num_pep max_chs lens) $ 
         \(spec_idx, num_idx, chrg, len) -> do
-          let d_idx = d_pep_idx_r_sorted `CUDA.advanceDevPtr` (fromIntegral $ spec_begin !! spec_idx) 
+          let d_idx = d_pep_idx_r_sorted `CUDA.advanceDevPtr` (spec_begin !! spec_idx) 
           CUDA.addIons d_specs (devResiduals ddb) (devMassTable ddb) (devIons ddb) (devTerminals ddb) d_idx (fromIntegral num_idx) chrg len
-      action ((lens, spec_sum_len_scan, spec_num_pep), d_specs)
+      action ((lens, spec_sum_len_scan, spec_num_pep, spec_begin), d_specs)
 
 
 --
 -- |Score each candidate sequence against the observed intensity spectra,
 -- returning the most relevant results.
 --
-sequestXC :: ConfigParams -> ExecutionPlan -> [Spectrum] -> ([Int], [Int], [Int]) -> Int -> IonSeries -> IO [(Float,Int)]
-sequestXC cp ep exprs (spec_lens, spec_sum_len_scan, spec_num_pep) cand_total d_thry = 
+sequestXC :: ConfigParams -> ExecutionPlan -> [Spectrum] -> (SpecData, IonSeries) -> Int -> IO [[(Float,Int)]]
+sequestXC cp ep exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec_begin),d_thry) cand_total = 
   let n' = max (numMatches cp) (numMatchesDetail cp) 
       all_exprs = U.concat exprs
       spec_len_scan = scanl (+) 0 spec_lens
@@ -345,44 +357,52 @@ sequestXC cp ep exprs (spec_lens, spec_sum_len_scan, spec_num_pep) cand_total d_
   in if cand_total == 0 then return [] else
   CUDA.withVector  all_exprs $ \d_all_exprs ->
   CUDA.allocaArray cand_total $ \d_spec_cand_idx ->
-  CUDA.allocaArray cand_total $ \d_score -> do
+  CUDA.allocaArray cand_total $ \d_scores -> 
+  CUDA.withHostArray cand_total $ \h_spec_cand_idx_sorted ->
+  CUDA.withHostArray cand_total $ \h_scores -> do
     -- For each spectrum score each candidate sequence
     -- Hopefully thec multiplication will run concurrently
-    streams <- replicateM num_spec CUDA.create
-    forM_ (zip7 [0..num_spec-1] streams spec_sum_len_scan spec_len_scan spec_num_pep_scan spec_num_pep spec_lens) $ 
-      \(spec_idx, strm, thry_start, spec_start, score_start, num_pep, len) -> do
+    -- streams <- replicateM num_spec CUDA.create
+    forM_ (zip6 [0..num_spec-1] spec_sum_len_scan spec_len_scan spec_num_pep_scan spec_num_pep spec_lens) $ 
+      \(spec_idx, thry_start, spec_start, score_start, num_pep, len) -> do
         let m        = num_pep 
             n        = len
             d_thry'  = d_thry `CUDA.advanceDevPtr` thry_start
             d_expr   = d_all_exprs `CUDA.advanceDevPtr` spec_start 
-            d_score' = d_score `CUDA.advanceDevPtr` score_start 
+            d_score' = d_scores `CUDA.advanceDevPtr` score_start 
 
         -- Set the stream for CUBLAS, concurrent kernel execution works for compute 2.0 and up
-        CUBLAS.setStream (cublasHandle ep) strm
+        -- CUBLAS.setStream (cublasHandle ep) strm
         -- Because cublas uses col major storage (as opposed to row major) swap row and col values and use CUBLAS_OP_T (Transform)
         --CUDA.mvm   (cublasHandle ep) d_score d_thry d_expr m n
         CUBLAS.sgemv (cublasHandle ep) (CUBLAS.T) n m 1 d_thry' n d_expr 1 0 d_score' 1
     CUDA.sync
-    forM_ streams $ \strm -> CUDA.destroy strm
+    -- forM_ streams $ \strm -> CUDA.destroy strm
 
     -- Sort the results
     -- and copy asynchronously, thrust sort will not run concurrently,
     -- so copying asynchronously will only reall have small speed up
-    forM_ (zip spec_num_pep_scan spec_num_pep) $ 
-      \(spec_start, num_pep) -> do
-        let d_score' = d_score `CUDA.advanceDevPtr` spec_start
-            d_idx    = d_spec_cand_idx `CUDA.advanceDevPtr` spec_start
-        CUDA.rsort_idx d_score' d_idx num_pep 
+    results <- forM (zip3 spec_num_pep_scan spec_num_pep spec_begin) $ 
+      \(score_start, num_pep, sorted_begin) -> do
+        let d_score = d_scores `CUDA.advanceDevPtr` score_start
+            h_score = h_scores `CUDA.advanceHostPtr` score_start
+            d_idx    = d_spec_cand_idx `CUDA.advanceDevPtr` score_start
+            h_idx    = h_spec_cand_idx_sorted `CUDA.advanceHostPtr` score_start
+
+        CUDA.rsort_idx d_score d_idx num_pep sorted_begin
 
         -- Retrieve the most relevant matches
         --
-        -- let h_score = 
-        -- let n = min n' num_pep
-        -- CUDA.peekArrayAsync n d_score' h_score Nothing
-        -- CUDA.peekArrayAsync n d_idx h_idx Nothing
+        let n = min n' num_pep
+        CUDA.peekArrayAsync n d_score h_score Nothing
+        CUDA.peekArrayAsync n d_idx h_idx Nothing
+        CUDA.sync
+        sc <- withHostPtr h_score $ \ptr -> peekArray n ptr
+        sorted_idx <- withHostPtr h_idx $ \ptr -> peekArray n ptr
+        let ix = map (\i -> resIdxSort ep U.! i) $ map fromIntegral sorted_idx 
 
-    return []
-    {-return $ zipWith (\s i -> (s/10000,fromIntegral i)) sc ix-}
+        return $ zipWith (\s i -> (s/10000, i)) sc ix
+    return results 
 
 --
 -- |Modified candidates version

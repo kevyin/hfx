@@ -10,7 +10,8 @@ module Foreign.CUDA.Util
   (
     sizeOfPtr,
     copyVector,
-    withVector
+    withVector,
+    withHostArray
   ) where
 
 import Foreign
@@ -74,3 +75,13 @@ withVectorS vec action = let l = S.length vec in
     S.unsafeWith vec $ \p -> CUDA.pokeArray l p d_ptr
     action d_ptr
 
+--
+-- Allocate space in the device and perform a computation, returning the result.
+-- A heap allocated array is reserved and is freed once the action is performed
+--
+{-# INLINE withHostArray #-}
+withHostArray :: (Storable a) => Int -> (HostPtr a -> IO b) -> IO b
+withHostArray l action = 
+  bracket (CUDA.mallocHostArray [] l) CUDA.freeHost $ \h_ptr ->
+    action h_ptr
+  -- Release host memory 

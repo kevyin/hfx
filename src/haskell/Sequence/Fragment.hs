@@ -254,7 +254,7 @@ withDeviceDB cp sdb action =
       CUDA.withVector ions $ \d_ions ->
       -- CUDA.withVector pep_idx_r_sorted $ \d_pep_idx_r_sorted -> do
       CUDA.allocaArray numFrag $ \d_pep_idx_r_sorted -> do
-          CUDA.sort_idx d_r_sorted d_pep_idx_r_sorted numFrag
+          CUDA.sort_idx d_r_sorted d_pep_idx_r_sorted numFrag 0
           action (DevDB numIon numFrag d_ions d_mt d_r (d_c, d_n) d_pep_idx_r_sorted)
 
 makeModInfo :: ConfigParams -> HostModInfo
