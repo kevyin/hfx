@@ -8,6 +8,8 @@ module Foreign.CUDA.BLAS.Context
 import Foreign.CUDA.BLAS.Error
 import Foreign.CUDA.BLAS.Internal.C2HS
 
+import Foreign.CUDA.Runtime.Stream
+
 -- System
 import Foreign
 import Foreign.C
@@ -50,3 +52,11 @@ destroy ctx = nothingIfOk =<< cublasDestroy ctx
 {# fun unsafe cublasDestroy_v2 as cublasDestroy
   { useHandle `Handle' } -> `Status' cToEnum #}
 
+
+
+setStream :: Handle -> Stream -> IO ()
+setStream ctx str = nothingIfOk =<< cublasSetStream ctx str
+
+{# fun unsafe cublasSetStream_v2 as cublasSetStream
+  { useHandle `Handle'
+  , useStream `Stream' } -> `Status' cToEnum #}

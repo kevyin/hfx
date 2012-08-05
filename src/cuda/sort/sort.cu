@@ -14,6 +14,7 @@
 
 #include "algorithms.h"
 #include "functors.h"
+#include "utils.h"
 
 void sort_val_f(float *d_keys_raw, uint32_t *d_vals_raw, uint32_t N)
 {
@@ -30,6 +31,29 @@ void sort_idx_f(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N)
 
     thrust::sequence(d_idx, d_idx + N);
     thrust::sort_by_key(d_keys, d_keys + N, d_idx);
+}
+
+void sort_idx_rf(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N)
+{
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time_t t_beg, t_end;
+    time(&t_beg);
+    std::cerr << "sort_idx_rf" << std::endl;
+#endif
+    thrust::device_ptr<float>    d_keys(d_keys_raw);
+    thrust::device_ptr<uint32_t> d_idx(d_idx_raw);
+
+    thrust::sequence(d_idx, d_idx + N);
+    thrust::sort_by_key(d_keys, d_keys+N, d_idx, thrust::greater<float>());
+
+    printGPUMemoryUsage();
+
+#ifdef _BENCH
+    cudaThreadSynchronize();
+    time(&t_end);
+    std::cerr<< "Time elapsed for sort_idx_rf: " << difftime(t_end,t_beg) << " seconds" << std::endl;
+#endif
 }
 
 void sort_rf(float *d_keys_raw, uint32_t *d_vals_raw, uint32_t N)

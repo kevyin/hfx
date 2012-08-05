@@ -22,7 +22,15 @@ import Control.Exception.Extensible
 -- Describe each error code
 --
 describe :: Status -> String
-describe _ = ""
+describe s = case s of
+               NotInitialized   -> "NotInitialized"
+               AllocFailed      -> "AllocFailed"
+               InvalidValue     -> "InvalidValue"
+               ArchMismatch     -> "ArchMismatch"
+               MappingError     -> "MappingError"
+               ExecutionFailed  -> "ExecutionFailed"
+               InternalError    -> "InternalError"
+               _                -> "Haskell cublas library error" -- should never occur
 
 
 -- Exceptions ------------------------------------------------------------------

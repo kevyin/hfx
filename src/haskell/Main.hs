@@ -124,17 +124,19 @@ search cp db hmi dmi dev fp =
         hPutStrLn stderr $ " # proteins:    " ++ (show . G.length . dbHeader $ db)
         hPutStrLn stderr $ " # peptides:    " ++ (show . G.length . dbFrag   $ db)
 
-      let groupBy2 (x:x':xs) = [[x,x']] ++ groupBy2 xs
-          groupBy2 (x:xs)    = [[x]] ++ groupBy2 xs
-          groupBy2 _         = []
-      allMatches <- forM (groupBy2 d) $ \ms2s -> do
+      let groupByN n xs = if n <= length xs 
+                         then let (a, b) = splitAt n xs in [a] ++ groupByN n b
+                         else if length xs > 0 then [xs] else []
+          -- groupByN n _  = []
+      -- allMatches <- forM (groupBy2 d) $ \ms2s -> do
+      allMatches <- forM (groupByN 20 d) $ \ms2s -> do
         forM_ ms2s $ \ms2 -> do
             hPutStrLn stderr $ " searching scan: " ++ (show $ ms2info ms2)
         matches <- searchForMatches cp ep db dev hmi dmi ms2s
         return $ flip map matches (\(ms2,mc) -> map (\m -> (fp, ms2, m)) mc)
         `catch`
         \(e :: SomeException) -> do 
-                hPutStrLn stderr $ unlines [ "scan:   " ++ (show $ ms2s), "reason: " ++ show e ]
+                hPutStrLn stderr $ unlines [ "First scan in group:   " ++ (show $ map ms2info $ ms2s ), "reason: " ++ show e ]
                 return []
 
       return $ concat $ allMatches

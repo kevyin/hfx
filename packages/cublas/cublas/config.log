@@ -201,7 +201,7 @@ configure:3652: checking for cublas_v2.h
 configure:3660: result: yes
 configure:3677: checking for library containing cublasGetVersion
 configure:3718: gcc -o conftest -Wl,--hash-size=31 -Wl,--reduce-memory-overheads  -I/usr/local/cuda/include   -L/usr/local/cuda/lib64  conftest.c  >&5
-/tmp/cc2m3YXd.o: In function `main':
+/tmp/ccswrqe5.o: In function `main':
 conftest.c:(.text+0xa): undefined reference to `cublasGetVersion'
 collect2: ld returned 1 exit status
 configure:3724: $? = 1

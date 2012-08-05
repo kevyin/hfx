@@ -46,6 +46,7 @@ void sort_val_f(float *d_keys, uint32_t *d_vals, uint32_t N);
  * with idx's from 0 to N-1
  */
 void sort_idx_f(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N);
+void sort_idx_rf(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N);
 
 #if 0
 /*
@@ -88,6 +89,22 @@ findIndicesInRange_f
     const uint32_t      length,
     const float         min,
     const float         max
+);
+
+uint32_t
+findSpecCandsByMass
+(
+    uint32_t            *d_spec_begin_raw,
+    uint32_t            *d_spec_end_raw,
+    uint32_t            *d_spec_num_pep_raw,
+
+    const float         *d_r_raw,
+    const uint32_t      *d_pep_idx_r_sorted_raw,
+    const uint32_t      num_pep,
+
+    const float         *d_spec_masses_raw,
+    const uint32_t      num_spec, 
+    const float         eps
 );
 
 uint32_t
