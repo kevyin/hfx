@@ -15,12 +15,13 @@ module Execution
   )
   where
 
-import qualified Data.Vector.Unboxed  as U
-import Foreign.CUDA.BLAS    as CUBLAS
-import Foreign.CUDA         as CUDA
+import qualified Data.Vector.Unboxed            as U
+import qualified Foreign.CUDA.BLAS              as CUBLAS
+import qualified Foreign.CUDA                   as CUDA
+import qualified Foreign.CUDA.Runtime.Stream    as CUDA
 import Sequence.Fragment 
 import Control.Exception
-import Data.Word
+import Control.Monad
 
 
 --------------------------------------------------------------------------------
@@ -34,7 +35,8 @@ import Data.Word
 data ExecutionPlan = ExecutionPlan
   {
     cublasHandle :: CUBLAS.Handle,
-    resIdxSort   :: U.Vector Int
+    resIdxSort   :: U.Vector Int,
+    cudaStreams  :: [CUDA.Stream]
   }
   --deriving (Show)
 
@@ -42,12 +44,13 @@ data ExecutionPlan = ExecutionPlan
 -- Actions
 --------------------------------------------------------------------------------
 
-withExecutionPlan :: DeviceSeqDB -> (ExecutionPlan -> IO a) -> IO a
-withExecutionPlan ddb action = do 
-  bracket CUBLAS.create CUBLAS.destroy $ \handle -> do
-    pep_idx_r_sorted' <- CUDA.peekListArray (numFragments ddb) (devResIdxSort ddb)
-    let pep_idx_r_sorted = U.map fromIntegral $ U.fromList pep_idx_r_sorted'
-    action $ ExecutionPlan handle pep_idx_r_sorted
+withExecutionPlan :: DeviceSeqDB -> Int -> (ExecutionPlan -> IO a) -> IO a
+withExecutionPlan ddb numStreams action = do 
+  bracket CUBLAS.create CUBLAS.destroy $ \cuHdl -> 
+    bracket (replicateM numStreams CUDA.create) (flip forM_ CUDA.destroy) $ \streams -> do
+      pep_idx_r_sorted' <- CUDA.peekListArray (numFragments ddb) (devResIdxSort ddb)
+      let pep_idx_r_sorted = U.map fromIntegral $ U.fromList pep_idx_r_sorted'
+      action $ ExecutionPlan cuHdl pep_idx_r_sorted streams
 
 --------------------------------------------------------------------------------
 -- Parse a configuration file
