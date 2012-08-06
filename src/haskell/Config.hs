@@ -83,6 +83,7 @@ data ConfigParams = ConfigParams
     -- Process configuration
     --
     useCPU              :: Bool,
+    maxConcurrentScans  :: Int,
 
     --
     -- Output configuration
@@ -237,6 +238,7 @@ baseParams =  ConfigParams
         variableMods        = U.replicate (26) 0, -- 26 letters, ie [A-Z]
 
         useCPU              = False,
+        maxConcurrentScans  = 16,
 
         verbose             = False,
         showMatchesPerScan  = True,
@@ -341,6 +343,11 @@ options =
     , Option "" ["mod_[A..Z]"]
         (ReqArg (\_ cp -> return cp) "FLOAT")
         "Variable modification mass to occurences of a residue"
+
+    , Option "" ["max-concurrent-scans"]
+        (ReqArg (\v cp -> return cp { maxConcurrentScans = read v }) "INT")
+        "Maximum number of scans to process together on the GPU."
+
 
 --    , Option "" ["cpu"]
 --        (NoArg (\cp -> return cp { useCPU = True }))
