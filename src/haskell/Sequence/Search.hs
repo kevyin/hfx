@@ -357,7 +357,7 @@ sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec
   CUDA.allocaArray cand_total $ \d_scores -> 
   CUDA.withHostArray retrieve_total $ \h_spec_pep_idx ->
   CUDA.withHostArray retrieve_total $ \h_scores -> do
-    CUDA.prepareSequestXC d_spec_pep_idx (devResIdxSort ddb) spec_begin spec_num_pep num_spec
+    CUDA.prepareSequestXC d_spec_pep_idx (devResIdxSort ddb) d_spec_begin d_spec_num_pep num_spec
     -- For each spectrum score each candidate sequence
     -- Hopefully thec multiplication will run concurrently
     forM_ (zip7 [0..num_spec-1] (cudaStreams ep) spec_sum_len_scan spec_len_scan spec_num_pep_scan spec_num_pep spec_lens) $ 

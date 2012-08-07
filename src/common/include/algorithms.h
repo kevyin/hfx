@@ -272,8 +272,8 @@ void prepare_scoring
     uint32_t        *d_out_spec_pep_idx,
 
     const uint32_t  *d_pep_idx_r_sorted_raw,
-    const uint32_t  *spec_begin,
-    const uint32_t  *spec_num_pep,
+    const uint32_t  *d_spec_begin,
+    const uint32_t  *d_spec_num_pep,
     const uint32_t  num_spec
 );
 

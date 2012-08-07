@@ -6,6 +6,8 @@
  *
  * ---------------------------------------------------------------------------*/
 
+#include <thrust/device_vector.h>
+#include <thrust/scan.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/permutation_iterator.h>
 #include <thrust/copy.h>
@@ -14,26 +16,52 @@
 
 using namespace thrust;
 
+
+template <typename T>
+struct fill_indices
+{
+    T       *d_out;
+    const T *d_values;
+
+    __host__ __device__ 
+    fill_indices(T       *_o,
+                 const T *_v) : 
+                 d_out(_o), d_values(_v) {}
+
+    template <typename Tuple>
+    __host__ __device__ 
+    void operator() (Tuple x)
+    {
+        uint32_t idx  = thrust::get<0>(x);
+        uint32_t n    = thrust::get<1>(x);
+        T        *out = d_out + thrust::get<2>(x);
+
+        for (size_t i = 0; i < n; ++i)
+        {
+            out[i] = d_values[idx]; 
+            idx++;
+        }
+    }
+};
+
 void prepare_scoring
 (
     uint32_t        *d_out_spec_pep_idx,
 
-    const uint32_t  *d_pep_idx_r_sorted_raw,
-    const uint32_t  *spec_begin,
-    const uint32_t  *spec_num_pep,
+    const uint32_t  *d_pep_idx_r_sorted,
+    const uint32_t  *d_spec_begin_raw,
+    const uint32_t  *d_spec_num_pep_raw,
     const uint32_t  num_spec
 )
 {
-    device_ptr<uint32_t> d_spec_pep_idx(d_out_spec_pep_idx);
-    device_ptr<const uint32_t> d_pep_idx_r_sorted(d_pep_idx_r_sorted_raw);
 
-    uint32_t offset = 0;
-    for (size_t i = 0; i < num_spec; ++i)
-    {
-        counting_iterator<uint32_t> idx_iter(spec_begin[i]);
-        copy_n(make_permutation_iterator(d_pep_idx_r_sorted, idx_iter),
-               spec_num_pep[i],
-               d_spec_pep_idx + offset);
-        offset += spec_num_pep[i];
-    }
+    device_ptr<const uint32_t> d_spec_begin(d_spec_begin_raw);
+    device_ptr<const uint32_t> d_spec_num_pep(d_spec_num_pep_raw);
+    device_vector<uint32_t> d_spec_num_pep_scan(num_spec);
+
+    exclusive_scan(d_spec_num_pep, d_spec_num_pep + num_spec, d_spec_num_pep_scan.begin());
+
+    for_each_n(make_zip_iterator(make_tuple(d_spec_begin, d_spec_num_pep, d_spec_num_pep_scan.begin())),
+               num_spec,
+               fill_indices<uint32_t>(d_out_spec_pep_idx, d_pep_idx_r_sorted));
 }

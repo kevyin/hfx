@@ -298,12 +298,12 @@ foreign import ccall unsafe "algorithms.h addIons_inplace"
 #endif
 
 
-prepareSequestXC :: DevicePtr Word32 -> DevicePtr Word32 -> [Int] -> [Int] -> Int -> IO ()
+prepareSequestXC :: DevicePtr Word32 -> DevicePtr Word32 -> DevicePtr Word32 -> DevicePtr Word32 -> Int -> IO ()
 prepareSequestXC a1 a2 a3 a4 a5 =
   withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
-  withArray     (map fromIntegral a3) $ \a3' ->
-  withArray     (map fromIntegral a4) $ \a4' ->
+  withDevicePtr a3 $ \a3' ->
+  withDevicePtr a4 $ \a4' ->
   prepareSequestXC'_ a1' a2' a3' a4' (cIntConv a5)
 
 foreign import ccall unsafe "algorithms.h prepare_scoring"
