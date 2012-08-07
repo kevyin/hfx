@@ -382,25 +382,25 @@ sequestXC cp ep exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec_begin),
             d_idx    = d_spec_cand_idx `CUDA.advanceDevPtr` score_start
             h_idx    = h_spec_cand_idx_sorted `CUDA.advanceHostPtr` ret_start
 
-        CUDA.rsort_idx d_score d_idx num_pep sorted_begin
+        CUDA.sort_idx d_score d_idx num_pep sorted_begin
 
         -- Retrieve the most relevant matches
         --
-        CUDA.peekArrayAsync n d_score h_score (Just strm)
-        CUDA.peekArrayAsync n d_idx h_idx (Just strm)
+        CUDA.peekArrayAsync n (d_score `CUDA.advanceDevPtr` (num_pep-n)) h_score (Just strm)
+        CUDA.peekArrayAsync n (d_idx `CUDA.advanceDevPtr` (num_pep-n)) h_idx (Just strm)
 
     -- retrieve results
     results <- forM (zip3 spec_retrieve spec_retrieve_scan (cudaStreams ep)) $ 
-      \(n, re_start, strm) -> do
+      \(n, ret_start, strm) -> do
         CUDA.block strm
-        let h_score = h_scores `CUDA.advanceHostPtr` re_start 
-            h_idx    = h_spec_cand_idx_sorted `CUDA.advanceHostPtr` re_start
+        let h_score = h_scores `CUDA.advanceHostPtr` ret_start 
+            h_idx    = h_spec_cand_idx_sorted `CUDA.advanceHostPtr` ret_start
 
         sc <- withHostPtr h_score $ \ptr -> peekArray n ptr
         sorted_idx <- withHostPtr h_idx $ \ptr -> peekArray n ptr
         let ix = map (\i -> resIdxSort ep U.! i) $ map fromIntegral sorted_idx 
 
-        return $ zipWith (\s i -> (s/10000, i)) sc ix
+        return . reverse $ zipWith (\s i -> (s/10000, i)) sc ix
     return results 
 
 --
