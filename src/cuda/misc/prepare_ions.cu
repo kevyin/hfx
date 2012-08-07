@@ -4,6 +4,11 @@
  * Copyright : (c) [2012] Kevin Ying 
  * License   : BSD
  *
+ * Converts the 8 bits used to represent ions (originally uint8_t characters) 
+ * to pack in modfication information
+ * The getter and setter macros eg SET_ACID_CHAR_MOD allow access to the 
+ * acid or modifcation idx that acid can be applied to.
+ * Details on the macros and how the 8 bits are separated is in utils.h
  * ---------------------------------------------------------------------------*/
 
 #include <stdint.h>
