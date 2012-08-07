@@ -85,3 +85,4 @@ withHostArray l action =
   bracket (CUDA.mallocHostArray [] l) CUDA.freeHost $ \h_ptr ->
     action h_ptr
   -- Release host memory 
+

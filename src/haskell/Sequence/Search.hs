@@ -347,12 +347,14 @@ sequestXC cp ep exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec_begin),
       spec_num_pep_scan = scanl (+) 0 spec_num_pep
       num_spec = length exprs
       spec_retrieve = map (\num_pep -> min n' num_pep) spec_num_pep
+      spec_retrieve_scan = scanl (+) 0 spec_retrieve
+      retrieve_total = last spec_retrieve_scan
   in if cand_total == 0 then return [] else
   CUDA.withVector  all_exprs $ \d_all_exprs ->
   CUDA.allocaArray cand_total $ \d_spec_cand_idx ->
   CUDA.allocaArray cand_total $ \d_scores -> 
-  CUDA.withHostArray cand_total $ \h_spec_cand_idx_sorted ->
-  CUDA.withHostArray cand_total $ \h_scores -> do
+  CUDA.withHostArray retrieve_total $ \h_spec_cand_idx_sorted ->
+  CUDA.withHostArray retrieve_total $ \h_scores -> do
     -- For each spectrum score each candidate sequence
     -- Hopefully thec multiplication will run concurrently
     forM_ (zip7 [0..num_spec-1] (cudaStreams ep) spec_sum_len_scan spec_len_scan spec_num_pep_scan spec_num_pep spec_lens) $ 
@@ -372,13 +374,13 @@ sequestXC cp ep exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec_begin),
     -- Sort the results
     -- and copy asynchronously, thrust sort will not run concurrently,
     -- so copying asynchronously will only reall have small speed up
-    forM_ (zip5 spec_retrieve (cudaStreams ep) spec_num_pep_scan spec_num_pep spec_begin) $ 
-      \(n, strm, score_start, num_pep, sorted_begin) -> do
+    forM_ (zip6 spec_retrieve spec_retrieve_scan (cudaStreams ep) spec_num_pep_scan spec_num_pep spec_begin) $ 
+      \(n, ret_start, strm, score_start, num_pep, sorted_begin) -> do
         CUDA.block strm
         let d_score = d_scores `CUDA.advanceDevPtr` score_start
-            h_score = h_scores `CUDA.advanceHostPtr` score_start
+            h_score = h_scores `CUDA.advanceHostPtr` ret_start
             d_idx    = d_spec_cand_idx `CUDA.advanceDevPtr` score_start
-            h_idx    = h_spec_cand_idx_sorted `CUDA.advanceHostPtr` score_start
+            h_idx    = h_spec_cand_idx_sorted `CUDA.advanceHostPtr` ret_start
 
         CUDA.rsort_idx d_score d_idx num_pep sorted_begin
 
@@ -388,11 +390,12 @@ sequestXC cp ep exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec_begin),
         CUDA.peekArrayAsync n d_idx h_idx (Just strm)
 
     -- retrieve results
-    results <- forM (zip3 spec_retrieve (cudaStreams ep) spec_num_pep_scan) $ 
-      \(n, strm, score_start) -> do
+    results <- forM (zip3 spec_retrieve spec_retrieve_scan (cudaStreams ep)) $ 
+      \(n, re_start, strm) -> do
         CUDA.block strm
-        let h_score = h_scores `CUDA.advanceHostPtr` score_start
-            h_idx    = h_spec_cand_idx_sorted `CUDA.advanceHostPtr` score_start
+        let h_score = h_scores `CUDA.advanceHostPtr` re_start 
+            h_idx    = h_spec_cand_idx_sorted `CUDA.advanceHostPtr` re_start
+
         sc <- withHostPtr h_score $ \ptr -> peekArray n ptr
         sorted_idx <- withHostPtr h_idx $ \ptr -> peekArray n ptr
         let ix = map (\i -> resIdxSort ep U.! i) $ map fromIntegral sorted_idx 
