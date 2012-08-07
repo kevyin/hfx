@@ -8,7 +8,8 @@
 STATIC_LIB      := libmisc.a
 
 CUFILES         := prepare_ions.cu \
-					prepare_ions_test.cu
+					prepare_ions_test.cu \
+					prepare_scoring.cu
 
 EXTRALIBS       := stdc++
 

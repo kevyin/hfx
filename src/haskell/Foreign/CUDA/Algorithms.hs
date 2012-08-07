@@ -16,6 +16,7 @@ module Foreign.CUDA.Algorithms
     findIndicesInRange, findSpecCandsByMass, findModablePeptides, findBeginEnd,
     calcTotalModCands, prepareGenMod, genModCands,
     addIons, addModIons, 
+    prepareSequestXC,
     sort_val, sort_idx, rsort_idx, rsort,
     mvm
   )
@@ -295,6 +296,19 @@ addIonsIP d_score d_spec d_residual d_ions (d_tc, d_tn) d_idx num_idx max_charge
 foreign import ccall unsafe "algorithms.h addIons_inplace"
   addIons_ip'_ :: Ptr Float -> Ptr Float -> Ptr Float -> Ptr Float -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Word32 -> Word32 -> IO ()
 #endif
+
+
+prepareSequestXC :: DevicePtr Word32 -> DevicePtr Word32 -> [Int] -> [Int] -> Int -> IO ()
+prepareSequestXC a1 a2 a3 a4 a5 =
+  withDevicePtr a1 $ \a1' ->
+  withDevicePtr a2 $ \a2' ->
+  withArray     (map fromIntegral a3) $ \a3' ->
+  withArray     (map fromIntegral a4) $ \a4' ->
+  prepareSequestXC'_ a1' a2' a3' a4' (cIntConv a5)
+
+foreign import ccall unsafe "algorithms.h prepare_scoring"
+  prepareSequestXC'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> IO () 
+
 
 sort_val :: DevicePtr Float -> DevicePtr Word32 -> Int -> IO ()
 sort_val a1 a2 a3 =

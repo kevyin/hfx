@@ -35,7 +35,6 @@ import Control.Monad
 data ExecutionPlan = ExecutionPlan
   {
     cublasHandle :: CUBLAS.Handle,
-    resIdxSort   :: U.Vector Int,
     cudaStreams  :: [CUDA.Stream]
   }
   --deriving (Show)
@@ -48,9 +47,7 @@ withExecutionPlan :: DeviceSeqDB -> Int -> (ExecutionPlan -> IO a) -> IO a
 withExecutionPlan ddb numStreams action = do 
   bracket CUBLAS.create CUBLAS.destroy $ \cuHdl -> 
     bracket (replicateM numStreams CUDA.create) (flip forM_ CUDA.destroy) $ \streams -> do
-      pep_idx_r_sorted' <- CUDA.peekListArray (numFragments ddb) (devResIdxSort ddb)
-      let pep_idx_r_sorted = U.map fromIntegral $ U.fromList pep_idx_r_sorted'
-      action $ ExecutionPlan cuHdl pep_idx_r_sorted streams
+      action $ ExecutionPlan cuHdl streams
 
 --------------------------------------------------------------------------------
 -- Parse a configuration file
