@@ -6,11 +6,12 @@
  *
  * ---------------------------------------------------------------------------*/
 
+#include <stdint.h>
+
 #include <thrust/device_vector.h>
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/sort.h>
-#include <stdint.h>
 
 #include "algorithms.h"
 #include "functors.h"
@@ -73,15 +74,3 @@ void sort_rf(float *d_keys_raw, uint32_t *d_vals_raw, uint32_t N)
     std::cerr<< "Time elapsed for sort_rf: " << difftime(t_end,t_beg) << " seconds" << std::endl;
 #endif
 }
-
-
-/**
- * Modified version of b40c's key value radix sort : SMALL_SIZE version (< 1M elements)
- * value array (d_idx) is also filled with the sequence [init,init+N]
- */
-//void radix_sort_idx_f(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N, uint32_t init, cudaStream_t stream)
-//{
-    //// Create ping-pong storage wrapper
-    //b40c::util::DoubleBuffer<float,uint32_t> sort_storage(d_keys_raw, d_idx_raw);    
-    //enactor.Sort(sort_storage, N)
-//}

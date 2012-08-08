@@ -27,7 +27,7 @@
 # endif
 
 # Add new SM Versions here as devices with new Compute Capability are released
-SM_VERSIONS     := sm_10 sm_11 sm_12 sm_13
+SM_VERSIONS     := sm_10 sm_11 sm_12 sm_13 sm_20 
 
 # detect OS
 OSUPPER         := $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])

@@ -385,12 +385,15 @@ sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec
             d_idx    = d_spec_pep_idx `CUDA.advanceDevPtr` score_start
             h_idx    = h_spec_pep_idx `CUDA.advanceHostPtr` ret_start
 
-        CUDA.sort_val d_score d_idx num_pep 
+        {-CUDA.sort_val d_score d_idx num_pep -}
+        CUDA.sort_b40c_f d_score d_idx num_pep 
 
         -- Retrieve the most relevant matches
         --
-        CUDA.peekArrayAsync n (d_score `CUDA.advanceDevPtr` (num_pep-n)) h_score (Just strm)
-        CUDA.peekArrayAsync n (d_idx `CUDA.advanceDevPtr` (num_pep-n)) h_idx (Just strm)
+        {-CUDA.peekArrayAsync n (d_score `CUDA.advanceDevPtr` (num_pep-n)) h_score (Just strm)-}
+        CUDA.peekArrayAsync n (d_score `CUDA.advanceDevPtr` (num_pep-n)) h_score Nothing 
+        {-CUDA.peekArrayAsync n (d_idx `CUDA.advanceDevPtr` (num_pep-n)) h_idx (Just strm)-}
+        CUDA.peekArrayAsync n (d_idx `CUDA.advanceDevPtr` (num_pep-n)) h_idx Nothing
 
     -- retrieve results
     results <- forM (zip3 spec_retrieve spec_retrieve_scan (cudaStreams ep)) $ 

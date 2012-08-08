@@ -48,6 +48,11 @@ void sort_val_f(float *d_keys, uint32_t *d_vals, uint32_t N);
 void sort_idx_f(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N, uint32_t init);
 void sort_idx_rf(float *d_keys_raw, uint32_t *d_idx_raw, uint32_t N, uint32_t init);
 
+/*
+ * b40c sorts
+ */
+void sort_b40c_f(float *d_keys, uint32_t *d_vals, uint32_t N);
+
 #if 0
 /*
  * Permute (32-bit payload)

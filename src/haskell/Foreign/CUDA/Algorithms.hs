@@ -17,7 +17,7 @@ module Foreign.CUDA.Algorithms
     calcTotalModCands, prepareGenMod, genModCands,
     addIons, addModIons, 
     prepareSequestXC,
-    sort_val, sort_idx, rsort_idx, rsort,
+    sort_val, sort_idx, rsort_idx, rsort, sort_b40c_f,
     mvm
   )
   where
@@ -337,6 +337,7 @@ rsort a1 a2 a3 =
 foreign import ccall unsafe "algorithms.h sort_rf"
   rsort'_ :: Ptr Float -> Ptr Word32 -> Word32 -> IO ()
 
+
 rsort_idx :: DevicePtr Float -> DevicePtr Word32 -> Int -> Int -> IO ()
 rsort_idx a1 a2 a3 a4 =
   withDevicePtr a1 $ \a1' ->
@@ -345,6 +346,16 @@ rsort_idx a1 a2 a3 a4 =
 
 foreign import ccall unsafe "algorithms.h sort_idx_rf"
   rsort_idx'_ :: Ptr Float -> Ptr Word32 -> Word32 -> Word32 -> IO ()
+
+
+sort_b40c_f :: DevicePtr Float -> DevicePtr Word32 -> Int -> IO ()
+sort_b40c_f a1 a2 a3 =
+  withDevicePtr a1 $ \a1' ->
+  withDevicePtr a2 $ \a2' ->
+  sort_b40c_f'_ a1' a2' (cIntConv a3) 
+
+foreign import ccall unsafe "algorithms.h sort_b40c_f"
+  sort_b40c_f'_ :: Ptr Float -> Ptr Word32 -> Word32 -> IO ()
 
 
 mvm :: CUBLAS.Handle -> DevicePtr Float -> DevicePtr Float -> DevicePtr Float -> Int -> Int -> IO ()

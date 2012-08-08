@@ -7,7 +7,9 @@
 # ------------------------------------------------------------------------------
 STATIC_LIB      := libsort.a
 
-CUFILES         := sort.cu
+CUFILES         := sort.cu 
+
+CUFILES_sm_13  	:= sort_b40c.cu
 
 EXTRALIBS       := stdc++
 
