@@ -379,7 +379,6 @@ sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec
     -- so copying asynchronously will only reall have small speed up
     forM_ (zip5 spec_retrieve spec_retrieve_scan (cudaStreams ep) spec_num_pep_scan spec_num_pep) $ 
       \(n, ret_start, strm, score_start, num_pep) -> do
-        CUDA.block strm
         let d_score = d_scores `CUDA.advanceDevPtr` score_start
             h_score = h_scores `CUDA.advanceHostPtr` ret_start
             d_idx    = d_spec_pep_idx `CUDA.advanceDevPtr` score_start
@@ -390,10 +389,8 @@ sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec
 
         -- Retrieve the most relevant matches
         --
-        {-CUDA.peekArrayAsync n (d_score `CUDA.advanceDevPtr` (num_pep-n)) h_score (Just strm)-}
-        CUDA.peekArrayAsync n (d_score `CUDA.advanceDevPtr` (num_pep-n)) h_score Nothing 
-        {-CUDA.peekArrayAsync n (d_idx `CUDA.advanceDevPtr` (num_pep-n)) h_idx (Just strm)-}
-        CUDA.peekArrayAsync n (d_idx `CUDA.advanceDevPtr` (num_pep-n)) h_idx Nothing
+        CUDA.peekArrayAsync n (d_score `CUDA.advanceDevPtr` (num_pep-n)) h_score (Just strm)
+        CUDA.peekArrayAsync n (d_idx `CUDA.advanceDevPtr` (num_pep-n)) h_idx (Just strm)
 
     -- retrieve results
     results <- forM (zip3 spec_retrieve spec_retrieve_scan (cudaStreams ep)) $ 
