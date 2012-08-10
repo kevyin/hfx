@@ -73,8 +73,10 @@ type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32,
 -- |A device pointer to a theoretical spectrum
 type IonSeries  = DevicePtr Float
 
--- |Theoretical spectrum information
-type SpecData = ([Int], [Int], [Int], [Int])
+-- |A group of Theoretical spectrums, their lengths and masses
+type SpecGroup = ([Spectrum], [Int], [Float], [Float])
+-- |More information about the spectrums
+type SpecGroupData = ([Int], [Int], [Int], [Int])
 
 -- |A section (after a split) of the database to be searched 
 -- (start index to (r,c,n), num elements in section)
@@ -89,62 +91,63 @@ type SearchSection = (Int, Int)
 -- given experimental spectrum.
 --
 searchForMatches :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> [MS2Data] -> IO [(MS2Data, MatchCollection)]
-searchForMatches cp ep sdb ddb hmi dmi ms2s = do
+searchForMatches cp ep sdb ddb hmi dmi ms2s = 
+  let specs     = map (sequestXCorr cp) ms2s
+      lens      = map G.length specs
+      masses    = map ms2Mass ms2s
+      chrgs     = map ms2charge ms2s
+      specGrp   = (specs,lens,masses,chrgs)
+  in do
   --putTraceMsg $ " dbion length " ++ show (G.length $ dbIon sdb)
   --return []
-  (t,matches) <- bracketTime $ searchWithoutMods cp ep sdb ddb ms2s
+  (t,matches) <- bracketTime $ searchWithoutMods cp ep sdb ddb specGrp
       --when (verbose cp) $ hPutStrLn stderr ("Search Without Modifications Elapsed time: " ++ showTime t)
 
       
       --when (verbose cp) $ hPutStrLn stderr ("Search With Modifications Elapsed time: " ++ showTime t2)
 
-  {-results <- forM (zip3 ms2s matches matchesMods $ \(ms2, m, mm) -> do-}
-  results <- forM (zip ms2s matches) $ \(ms2, m) -> do
-      (t2,mm) <- bracketTime $ case dmi of
-                        NoDMod -> return []
-                        _      -> searchWithMods cp ep sdb ddb hmi dmi ms2 
+  (t2,matchesMods) <- bracketTime $ case dmi of
+                    NoDMod -> return []
+                    _      -> searchWithMods cp ep sdb ddb hmi dmi specGrp
+
+  results <- forM (zip3 ms2s matches matchesMods) $ \(ms2, m, mm) -> do
       return $ (ms2,sortBy matchScoreOrder $ (mm ++ m))
   return results 
 
 --
 -- |Search without modifications
 --
-searchWithoutMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> [MS2Data] -> IO [MatchCollection]
-searchWithoutMods cp ep sdb ddb ms2s = 
+searchWithoutMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> SpecGroup -> IO [MatchCollection]
+searchWithoutMods cp ep sdb ddb specGrp@(specs,lens,masses,chrgs) = 
   filterCandidatesByMass cp ddb masses $ \specCandidatesByMass@(num_spec_cand_total,_,_,_,_) -> 
   if num_spec_cand_total == 0 then return [] else
-  mkSpecXCorr ddb specCandidatesByMass ms2s lens $ \specThrys -> do 
+  mkSpecXCorr ddb specCandidatesByMass specGrp lens $ \specThrys -> do 
     results <- sequestXC cp ddb ep specCandidatesByMass specs specThrys 
-    return $ map finish' $ zip3 ms2s specs results 
+    return $ map finish $ zip3 chrgs specs results 
   
   where
-    specs         = map (sequestXCorr cp) ms2s
-    lens          = map G.length specs
-    masses        = map ms2Mass ms2s
-    finish' (ms2,spec,sxis) = 
-      let finish (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)
-          sp f  = matchIonSequence cp (ms2charge ms2) (extractPeaks spec) f
-      in  mapMaybe finish sxis
+    finish (chrg,spec,sxis) = 
+      let finish' (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)
+          sp f  = matchIonSequence cp chrg (extractPeaks spec) f
+      in  mapMaybe finish' sxis
 
 --
 -- |Search with modifications
 --
-searchWithMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> MS2Data -> IO MatchCollection
-searchWithMods cp ep sdb ddb hmi dmi ms2 = 
-  let mass = ms2Mass ms2
-  in
-  filterCandidatesByModMass cp ddb dmi mass                $ \candsByModMass@(num_cand_mass, _, _, _) -> 
-  if num_cand_mass == 0 then return [] else
-  filterCandidatesByModability cp ddb dmi candsByModMass  $ \candsByMassAndMod@(num_cand_massmod,_,_,_) -> 
-  if num_cand_massmod == 0 then return [] else
-  genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->
-  mapMaybe finish `fmap` scoreModCandidates cp ep ddb hmi dmi modifiedCands (ms2charge ms2) (G.length spec) spec
+searchWithMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> SpecGroup -> IO [MatchCollection]
+searchWithMods cp ep sdb ddb hmi dmi (masses,specs,lens,chrgs) = return []
+  {-filterCandidatesByModMass cp ddb dmi mass                $ \candsByModMass@(num_cand_mass, _, _, _) -> -}
+  {-if num_cand_mass == 0 then return [] else return []-}
+  {-filterCandidatesByModability cp ddb dmi candsByModMass  $ \candsByMassAndMod@(num_cand_massmod,_,_,_) -> -}
+  {-if num_cand_massmod == 0 then return [] else-}
+  {-genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->-}
+  {-mapMaybe finish `fmap` scoreModCandidates cp ep ddb hmi dmi modifiedCands (ms2charge ms2) (G.length spec) spec-}
   
   where
-    spec          = sequestXCorr cp ms2
-    peaks         = extractPeaks spec
-    sp            = matchIonSequence cp (ms2charge ms2) peaks
-    finish (sx,i,pmod,u) = liftM (\f -> Match (modifyFragment pmod u f) sx (sp f) pmod u) (lookup sdb i)
+    finish (chrg,spec,sxipu) = 
+        let finish' (sx,i,pmod,u) = liftM (\f -> Match (modifyFragment pmod u f) sx (sp f) pmod u) (lookup sdb i)
+            sp f = matchIonSequence cp chrg (extractPeaks spec) f
+        in mapMaybe finish' sxipu
   
 --
 -- |Search the protein database for candidate peptides within the specified mass
@@ -306,11 +309,10 @@ mkModSpecXCorr db dmi (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unra
 -- On the device, this is stored as a dense matrix, each row corresponding to a
 -- single sequence.
 --
-mkSpecXCorr :: DeviceSeqDB -> SpecCandidatesByMass -> [MS2Data] -> [Int] -> ((SpecData, IonSeries) -> IO b) -> IO b
-mkSpecXCorr ddb specCands ms2s lens action =
+mkSpecXCorr :: DeviceSeqDB -> SpecCandidatesByMass -> SpecGroup -> [Int] -> ((SpecGroupData, IonSeries) -> IO b) -> IO b
+mkSpecXCorr ddb specCands (_,_,_,chrgs) lens action =
   let (num_spec_cand_total, num_spec, 
        d_spec_begin, d_spec_end, d_spec_num_pep) = specCands
-      chrgs = map ms2charge ms2s
       d_pep_idx_r_sorted = devResIdxSort ddb
   in do
     spec_num_pep' <- CUDA.peekListArray num_spec d_spec_num_pep
@@ -339,7 +341,7 @@ mkSpecXCorr ddb specCands ms2s lens action =
 -- |Score each candidate sequence against the observed intensity spectra,
 -- returning the most relevant results.
 --
-sequestXC :: ConfigParams -> DeviceSeqDB -> ExecutionPlan -> SpecCandidatesByMass -> [Spectrum] -> (SpecData, IonSeries) -> IO [[(Float,Int)]]
+sequestXC :: ConfigParams -> DeviceSeqDB -> ExecutionPlan -> SpecCandidatesByMass -> [Spectrum] -> (SpecGroupData, IonSeries) -> IO [[(Float,Int)]]
 sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec_begin),d_thry) = 
   let n' = max (numMatches cp) (numMatchesDetail cp) 
       all_exprs = U.concat exprs
