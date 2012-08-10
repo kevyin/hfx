@@ -80,8 +80,10 @@ main = do
   --(t2,allMatches') <- bracketTime $ forM dbs $ \db -> do
   (t2, allMatches') <- bracketTime $ withDeviceDB cp' db $ \ddb -> 
       withDevModInfo ddb hmi $ \dmi -> do
-        let (num_ma, d_ma, _) = devModAcids dmi
-        CUDA.prepareIons (devIons ddb) (numIons ddb) d_ma num_ma
+        case dmi of
+          NoDMod -> CUDA.prepareIons (devIons ddb) (numIons ddb) CUDA.nullDevPtr 0 
+          _      -> let (num_ma, d_ma, _) = devModAcids dmi in do
+            CUDA.prepareIons (devIons ddb) (numIons ddb) d_ma num_ma
         forM dta $ \f -> do
             matches <- search cp' db hmi dmi ddb f
             when (showMatchesPerScan cp) $ printScanResults cp' f matches
