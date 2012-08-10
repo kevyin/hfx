@@ -136,21 +136,25 @@ findModablePeptides
     uint32_t            *d_out_pep_idx_raw, 
     uint32_t            *d_out_pep_mod_idx_raw, 
     uint32_t            *d_out_pep_ma_count_raw,   // 2d array, count of each ma in each peptide
-    uint32_t            num_pep_total,
+    uint32_t            *d_out_spec_num_valid_scan, 
 
-    const uint8_t       *d_ions_raw,
-    const uint32_t      *d_tc_raw,
-    const uint32_t      *d_tn_raw,
+    const uint32_t      *d_spec_num_cand_scan, // containing num cand by mass
+    const uint32_t      num_spec,
+    uint32_t            num_cand_total,
+
+    const uint8_t       *d_ions,
+    const uint32_t      *d_tc,
+    const uint32_t      *d_tn,
 
     const uint32_t      *d_pep_idx_r_sorted_raw,
 
     const uint32_t      *d_begin_raw,
     const uint32_t      *d_end_raw,
     const uint32_t      *d_num_pep_scan_raw,
-    const uint32_t      *d_mod_ma_count_raw,
-    const uint32_t      num_mod_raw,
+    const uint32_t      *d_mod_ma_count,
+    const uint32_t      num_mod,
 
-    const uint8_t       *d_ma_raw,
+    const uint8_t       *d_ma,
     const uint32_t      num_ma
 );
 

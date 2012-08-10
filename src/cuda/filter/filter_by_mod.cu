@@ -19,6 +19,7 @@
 #include <thrust/device_vector.h>
 #include <thrust/transform_scan.h>
 #include <thrust/binary_search.h>
+#include <thrust/sequence.h>
 #include <thrust/remove.h>
 #include <thrust/copy.h>
 #include <thrust/scan.h>
@@ -157,6 +158,8 @@ struct fillPepAndModIdx : public thrust::unary_function<T, void>
     const T *d_begin;
     const T *d_end;
     const T *d_num_pep_scan;
+    const T *d_spec_num_cand_scan;
+    const T num_mod;
 
     __host__ __device__
     fillPepAndModIdx(T *_pi,
@@ -164,14 +167,19 @@ struct fillPepAndModIdx : public thrust::unary_function<T, void>
                      const T *_pirs,
                      const T *_b,
                      const T *_e,
-                     const T *_nps)
-                    : d_out_pep_idx(_pi), d_out_pep_mod_idx(_pmi), d_pep_idx_r_sorted(_pirs), d_begin(_b), d_end(_e), d_num_pep_scan(_nps) {}
+                     const T *_nps,
+                     const T *_sncs,
+                     const T _nm)
+                    : d_out_pep_idx(_pi), d_out_pep_mod_idx(_pmi), d_pep_idx_r_sorted(_pirs), d_begin(_b), d_end(_e), d_num_pep_scan(_nps), d_spec_num_cand_scan(_sncs), num_mod(_nm) {}
 
-    __host__ __device__ void operator() (T mod_idx)
+    __host__ __device__ void operator() (T idx)
     {
+        const uint32_t mod_idx = idx % num_mod;
+        const uint32_t spec_idx = idx / num_mod;
+        const size_t offset = (spec_idx * num_mod) + mod_idx;
         T pep_idx;
-        T out_idx = d_num_pep_scan[mod_idx]; // position in the out array
-        for (T i = d_begin[mod_idx]; i != d_end[mod_idx]; ++i) {
+        T out_idx = d_num_pep_scan[offset] + d_spec_num_cand_scan[spec_idx]; // position in the out array
+        for (T i = d_begin[offset]; i != d_end[offset]; ++i) {
             pep_idx = d_pep_idx_r_sorted[i];
 
             d_out_pep_idx[out_idx] = pep_idx;
@@ -260,7 +268,11 @@ findModablePeptides
     uint32_t            *d_out_pep_idx_raw, 
     uint32_t            *d_out_pep_mod_idx_raw, 
     uint32_t            *d_out_pep_ma_count_raw,   // 2d array, count of each ma in each peptide
-    uint32_t            num_cand_mass,
+    uint32_t            *d_out_spec_num_valid_scan, 
+
+    const uint32_t      *d_spec_num_cand_scan_raw, // containing num cand by mass
+    const uint32_t      num_spec,
+    uint32_t            num_cand_total,
 
     const uint8_t       *d_ions,
     const uint32_t      *d_tc,
@@ -288,6 +300,7 @@ findModablePeptides
 
     thrust::device_ptr<uint32_t> d_out_pep_ma_count(d_out_pep_ma_count_raw);
 
+    thrust::device_ptr<const uint32_t> d_spec_num_cand_scan(d_spec_num_cand_scan_raw);
 
     // fill arrays mod_idx and pep_idx. will look like:
     // mod_idx  pep_idx
@@ -301,19 +314,19 @@ findModablePeptides
     // 1        b1
     // Where a{n} .. b{n} are indices to the peptides which are inrange for the modificiation 
     thrust::counting_iterator<uint32_t> first(0);
-    thrust::counting_iterator<uint32_t> last = first + num_mod;
-    thrust::for_each(first, last, fillPepAndModIdx<uint32_t>(d_out_pep_idx_raw, d_out_pep_mod_idx_raw, d_pep_idx_r_sorted_raw, d_begin_raw, d_end_raw, d_num_pep_scan_raw));
+    thrust::counting_iterator<uint32_t> last = first + num_mod*num_spec;
+    thrust::for_each(first, last, fillPepAndModIdx<uint32_t>(d_out_pep_idx_raw, d_out_pep_mod_idx_raw, d_pep_idx_r_sorted_raw, d_begin_raw, d_end_raw, d_num_pep_scan_raw, d_spec_num_cand_scan.get(), num_mod));
 
     // non compacted arrays
-    thrust::device_vector<bool> d_valid_v(num_cand_mass);
-    /*thrust::device_vector<uint32_t> d_out_pep_ma_count2(num_ma*num_cand_mass);*/
+    thrust::device_vector<bool> d_valid_v(num_cand_total);
+    /*thrust::device_vector<uint32_t> d_out_pep_ma_count2(num_ma*num_cand_total);*/
 
-    // count and valid
+    // fill counts and check if modable
     
-    last = first + num_cand_mass * num_ma;
+    last = first + num_cand_total * num_ma;
     thrust::transform(first, last, d_out_pep_ma_count, fillPepMACount<uint32_t>(d_out_pep_idx_raw, d_tc, d_tn, d_ions, d_ma, num_ma));
 
-    last = first + num_cand_mass;
+    last = first + num_cand_total;
     thrust::transform(first, last, d_valid_v.begin(), checkModable<uint32_t>(d_out_pep_ma_count_raw, d_out_pep_mod_idx_raw, d_mod_ma_count, num_ma));
 
     // compact
@@ -321,22 +334,39 @@ findModablePeptides
     device_ptr<uint32_t> d_pep_idx(d_out_pep_idx_raw);
     device_ptr<uint32_t> d_pep_ma_count(d_out_pep_ma_count_raw);
 
+    device_vector<uint32_t> d_spec_cand_idx(num_cand_total);
+    sequence(d_spec_cand_idx.begin(),d_spec_cand_idx.end());
+
     typedef device_ptr<uint32_t>            UIntDIter;
-    typedef tuple<UIntDIter, UIntDIter>     UIntDIterTuple2;
-    typedef zip_iterator<UIntDIterTuple2>   ZipIter;
+    typedef device_vector<uint32_t>::iterator DVUIntDIter;
+    typedef tuple<UIntDIter, UIntDIter, DVUIntDIter>     UIntDIterTuple3;
+    typedef zip_iterator<UIntDIterTuple3>   ZipIter;
 
-    ZipIter end = remove_if(make_zip_iterator(make_tuple(d_pep_mod_idx, d_pep_idx)),
-                            make_zip_iterator(make_tuple(d_pep_mod_idx+num_cand_mass, d_pep_idx+num_cand_mass)),
-                            d_valid_v.begin(),
-                            logical_not<bool>());
+    ZipIter end = remove_if(
+        make_zip_iterator(make_tuple(d_pep_mod_idx, 
+                                     d_pep_idx, 
+                                     d_spec_cand_idx.begin())),
+        make_zip_iterator(make_tuple(d_pep_mod_idx+num_cand_total, 
+                                     d_pep_idx+num_cand_total, 
+                                     d_spec_cand_idx.end())),
+        d_valid_v.begin(),
+        logical_not<bool>());
 
-    last = first + num_cand_mass * num_ma;
-    remove_if(d_pep_ma_count, d_pep_ma_count+num_cand_mass*num_ma,
+    last = first + num_cand_total * num_ma;
+    remove_if(d_pep_ma_count, d_pep_ma_count+num_cand_total*num_ma,
               make_transform_iterator(first, mat_wider<bool>(d_valid_v.data().get(),num_ma)),
               logical_not<bool>());
     
-    UIntDIterTuple2 endTuple = end.get_iterator_tuple();
+    UIntDIterTuple3 endTuple = end.get_iterator_tuple();
     const uint32_t numValid = get<0>(endTuple) - d_pep_mod_idx;
+
+    // now calc num valid per spectrum to differentiate the sections
+    thrust::lower_bound(d_spec_cand_idx.begin(), get<2>(endTuple),
+                        d_spec_num_cand_scan, d_spec_num_cand_scan + num_spec,
+                        device_ptr<uint32_t>(d_out_spec_num_valid_scan));
+
+
+
 
 #ifdef _BENCH
     cudaThreadSynchronize();

@@ -62,7 +62,7 @@ type CandidatesByMass = (Int, DevicePtr Word32)
 type SpecCandidatesByMass = (Int, Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
 
 -- |
-type CandidatesByModMass = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
+type CandidatesByModMass = (Int, [Int], DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
 
 -- |Modable Peptides have enough of a acid for a modification to be applied
 type CandidatesModable = (Int, {-DevicePtr Word32, -}DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
@@ -107,7 +107,7 @@ searchForMatches cp ep sdb ddb hmi dmi ms2s =
       --when (verbose cp) $ hPutStrLn stderr ("Search With Modifications Elapsed time: " ++ showTime t2)
 
   (t2,matchesMods) <- bracketTime $ case dmi of
-                    NoDMod -> return []
+                    NoDMod -> return $ replicate (length ms2s) []
                     _      -> searchWithMods cp ep sdb ddb hmi dmi specGrp
 
   results <- forM (zip3 ms2s matches matchesMods) $ \(ms2, m, mm) -> do
@@ -120,7 +120,7 @@ searchForMatches cp ep sdb ddb hmi dmi ms2s =
 searchWithoutMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> SpecGroup -> IO [MatchCollection]
 searchWithoutMods cp ep sdb ddb specGrp@(specs,lens,masses,chrgs) = 
   filterCandidatesByMass cp ddb masses $ \specCandidatesByMass@(num_spec_cand_total,_,_,_,_) -> 
-  if num_spec_cand_total == 0 then return [] else
+  if num_spec_cand_total == 0 then return $ replicate (length specs) [] else
   mkSpecXCorr ddb specCandidatesByMass specGrp lens $ \specThrys -> do 
     results <- sequestXC cp ddb ep specCandidatesByMass specs specThrys 
     return $ map finish $ zip3 chrgs specs results 
@@ -135,11 +135,13 @@ searchWithoutMods cp ep sdb ddb specGrp@(specs,lens,masses,chrgs) =
 -- |Search with modifications
 --
 searchWithMods :: ConfigParams -> ExecutionPlan -> SequenceDB -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> SpecGroup -> IO [MatchCollection]
-searchWithMods cp ep sdb ddb hmi dmi (masses,specs,lens,chrgs) = return []
-  {-filterCandidatesByModMass cp ddb dmi mass                $ \candsByModMass@(num_cand_mass, _, _, _) -> -}
-  {-if num_cand_mass == 0 then return [] else return []-}
-  {-filterCandidatesByModability cp ddb dmi candsByModMass  $ \candsByMassAndMod@(num_cand_massmod,_,_,_) -> -}
-  {-if num_cand_massmod == 0 then return [] else-}
+searchWithMods cp ep sdb ddb hmi dmi (specs,lens,masses,chrgs) =
+  filterCandidatesByModMass cp ddb dmi masses $ \candsByModMass@(num_cand_mass, _, _, _, _) -> 
+  if num_cand_mass == 0 then return $ replicate (length specs) [] else 
+  
+  filterCandidatesByModability cp ddb dmi candsByModMass  $ \candsByMassAndMod@(num_cand_massmod,_,_,_) -> 
+  if num_cand_massmod == 0 then return $ replicate (length specs) [] else do
+    return $ replicate (length specs) []
   {-genModCandidates cp ddb dmi candsByMassAndMod $ \modifiedCands ->-}
   {-mapMaybe finish `fmap` scoreModCandidates cp ep ddb hmi dmi modifiedCands (ms2charge ms2) (G.length spec) spec-}
   
@@ -176,18 +178,27 @@ filterCandidatesByMass cp ddb masses action =
 -- |For each modification and it's mass delta, find suitable peptides
 -- Do this by finding begin and end indices to a list of peptides sorted by residual mass
 --
-filterCandidatesByModMass :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> Float -> (CandidatesByModMass -> IO b) -> IO b
-filterCandidatesByModMass cp ddb dmi mass action =
+filterCandidatesByModMass :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> [Float] -> (CandidatesByModMass -> IO b) -> IO b
+filterCandidatesByModMass cp ddb dmi masses action =
   let (num_mod, _, _, d_mod_delta) = devModCombs dmi 
       d_pep_idx_r_sorted = devResIdxSort ddb
+      num_spec  = length masses
+      num_spec_x_mod = num_spec*num_mod
+      eps = massTolerance cp
   in
-  CUDA.allocaArray num_mod $ \d_begin ->      -- begin idx to d_pep_idx_r_sorted
-  CUDA.allocaArray num_mod $ \d_end ->        -- end idx
+  CUDA.allocaArray num_spec_x_mod $ \d_spec_mod_begin -> -- begin idx to d_pep_idx_r_sorted
+  CUDA.allocaArray num_spec_x_mod $ \d_spec_mod_end -> -- end idx
   -- CUDA.allocaArray num_mod $ \d_num_pep ->    -- end[i] - begin[i]
-  CUDA.allocaArray num_mod $ \d_num_pep_scan-> 
-  CUDA.findBeginEnd d_begin d_end {-d_num_pep-} d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps >>= \num_cand_mass -> action (num_cand_mass, d_begin, d_end, d_num_pep_scan)
-  where
-    eps = massTolerance cp
+  CUDA.allocaArray num_spec_x_mod $ \d_spec_mod_num_pep_scan -> do
+  spec_num_cand <- forM (zip [0..num_spec-1] masses) $ \(spec_idx,mass) -> do
+      let d_begin = d_spec_mod_begin `CUDA.advanceDevPtr` (spec_idx*num_mod)
+          d_end   = d_spec_mod_end `CUDA.advanceDevPtr` (spec_idx*num_mod)
+          d_num_pep_scan = d_spec_mod_num_pep_scan `CUDA.advanceDevPtr` (spec_idx*num_mod)
+
+      return =<< CUDA.findBeginEnd d_begin d_end d_num_pep_scan (devResiduals ddb) d_pep_idx_r_sorted (numFragments ddb) d_mod_delta num_mod mass eps 
+
+  let totalCandByMass = sum spec_num_cand
+  action (totalCandByMass, spec_num_cand, d_spec_mod_begin, d_spec_mod_end, d_spec_mod_num_pep_scan)
 
 --
 -- |Search a subset of peptides for peptides which a specific combination of modifications 
@@ -199,16 +210,21 @@ filterCandidatesByModMass cp ddb dmi mass action =
 -- modifiable acids to be generated from each peptide
 --
 filterCandidatesByModability :: ConfigParams -> DeviceSeqDB -> DeviceModInfo -> CandidatesByModMass -> (CandidatesModable -> IO b) -> IO b
-filterCandidatesByModability cp ddb dmi (num_cand_mass, d_begin, d_end, d_num_pep_scan) action =
+filterCandidatesByModability cp ddb dmi (totalCandByMass, spec_num_cand, d_spec_mod_begin, d_spec_mod_end, d_spec_mod_num_pep_scan) action =
   let (num_ma, d_ma, _)                 = devModAcids dmi 
       (num_mod, d_mod_ma_count, _, _)   = devModCombs dmi 
       d_pep_idx_r_sorted                = devResIdxSort ddb
+
+      num_spec              = length spec_num_cand
+      spec_num_cand_scan    = U.map fromIntegral $ U.fromList $ scanl (+) 0 spec_num_cand
   in
-  CUDA.allocaArray num_cand_mass $ \d_pep_idx ->        -- idx of peptide to tc tn
-  CUDA.allocaArray num_cand_mass $ \d_pep_mod_idx ->    -- peptides corresponding modification
-  CUDA.allocaArray (num_cand_mass*num_ma) $ \d_pep_ma_count -> -- modable acid count for each peptide
-  CUDA.findModablePeptides d_pep_idx d_pep_mod_idx d_pep_ma_count num_cand_mass (devIons ddb) (devTerminals ddb) d_pep_idx_r_sorted d_begin d_end d_num_pep_scan d_mod_ma_count num_mod d_ma num_ma >>= \n -> do
-    action (n, d_pep_idx, d_pep_mod_idx, d_pep_ma_count)
+  CUDA.withVector spec_num_cand_scan $ \d_spec_num_cand_scan ->
+  CUDA.allocaArray totalCandByMass $ \d_pep_idx ->        -- idx of peptide to tc tn
+  CUDA.allocaArray totalCandByMass $ \d_pep_mod_idx ->    -- peptides corresponding modification
+  CUDA.allocaArray totalCandByMass $ \d_spec_num_mpep_scan -> 
+  CUDA.allocaArray (totalCandByMass*num_ma) $ \d_pep_ma_count -> -- modable acid count for each peptide
+  CUDA.findModablePeptides d_pep_idx d_pep_mod_idx d_pep_ma_count d_spec_num_mpep_scan d_spec_num_cand_scan num_spec totalCandByMass (devIons ddb) (devTerminals ddb) d_pep_idx_r_sorted d_spec_mod_begin d_spec_mod_end d_spec_mod_num_pep_scan d_mod_ma_count num_mod d_ma num_ma >>= \totalByModability -> do
+    action (totalByModability, d_pep_idx, d_pep_mod_idx, d_pep_ma_count)
 
 --
 -- |Given some unmodified peptides, modifications and
@@ -353,7 +369,7 @@ sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec
       (cand_total, num_spec, 
        d_spec_begin, d_spec_end, d_spec_num_pep) = spc
 
-  in if cand_total == 0 then return [] else
+  in if cand_total == 0 then return $ replicate (length exprs) [] else
   CUDA.withVector  all_exprs $ \d_all_exprs ->
   CUDA.allocaArray cand_total $ \d_spec_pep_idx ->
   CUDA.allocaArray cand_total $ \d_scores -> 

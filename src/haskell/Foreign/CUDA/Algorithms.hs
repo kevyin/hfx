@@ -85,14 +85,15 @@ foreign import ccall unsafe "algorithms.h findBeginEnd_f"
   findBeginEnd'_ :: Ptr Word32 -> Ptr Word32 -> {-Ptr Word32 -> -}Ptr Word32 -> Ptr Float -> Ptr Word32 -> Word32 -> Ptr Float -> Word32 -> Float -> Float -> IO Int
 
   --CUDA.findModablePeptides {-d_pep_idx_valid -}d_pep_idx d_pep_mod_idx d_pep_ma_count (devIons ddb) (devTerminals ddb) d_pep_idx_r_sorted d_begin d_end d_num_pep_scan d_mod_ma_count num_mod d_ma num_ma >>= \n -> do
-findModablePeptides :: {-DevicePtr Word32   -}                  --- ^ result array, indices to modable peps
-                    DevicePtr Word32                     --- ^ result array, indices to the corresponding peptide
+findModablePeptides :: DevicePtr Word32                     --- ^ result array, indices to the corresponding peptide
                     -> DevicePtr Word32                     --- ^ result array, indices to corres mod comb
                     -> DevicePtr Word32                     --- ^ result array, pep ma counts
+                    -> DevicePtr Word32                     --- ^ result array, number of modable peptides for each spectrum scanned
+                    -> DevicePtr Word32                     --- ^ per spec, number of candidates (by mass) scanned
+                    -> Int                                  --- ^ number of spectrums
                     -> Int                                  --- ^ number of total peptide candidates by mass 
                     -> DevicePtr Word8                      --- ^ amino acid ion db
                     -> (DevicePtr Word32, DevicePtr Word32) --- ^ c and n terminals
-
                     -> DevicePtr Word32                     --- ^ d_pep_idx_r_sorted peptides sorted by residual
 
                     -> DevicePtr Word32                     --- ^ d_begin : start of cands
@@ -105,27 +106,29 @@ findModablePeptides :: {-DevicePtr Word32   -}                  --- ^ result arr
                     -> DevicePtr Word8                      --- ^ ma - modable acids 
                     -> Int                                  --- ^ number of ma's
                     -> IO Int
-findModablePeptides {-a1-} a2 a3 a4 a5 a6 (a7, a8) a9 a10 a11 a12 a13 a14 a15 a16 =
-  -- withDevicePtr a1 $ \a1' ->
+findModablePeptides a1 a2 a3 a4 a5 a6 a7 a8 (a9, a10) a11 a12 a13 a14 a15 a16 a17 a18 =
+  withDevicePtr a1 $ \a1' ->
   withDevicePtr a2 $ \a2' ->
   withDevicePtr a3 $ \a3' ->
   withDevicePtr a4 $ \a4' ->
-  --withDevicePtr a5 $ \a5' ->
-  withDevicePtr a6 $ \a6' ->
-  withDevicePtr a7 $ \a7' ->
+  withDevicePtr a5 $ \a5' ->
+  -- withDevicePtr a6 $ \a6' ->
+  -- withDevicePtr a7 $ \a7' ->
   withDevicePtr a8 $ \a8' ->
   withDevicePtr a9 $ \a9' ->
   withDevicePtr a10 $ \a10' ->
   withDevicePtr a11 $ \a11' ->
   withDevicePtr a12 $ \a12' ->
   withDevicePtr a13 $ \a13' ->
-  --withDevicePtr a14 $ \a14' ->
+  withDevicePtr a14 $ \a14' ->
   withDevicePtr a15 $ \a15' ->
   --withDevicePtr a16 $ \a16' ->
-  cIntConv `fmap` findModablePeptides'_ {-a1'-} a2' a3' a4' (cIntConv a5) a6' a7' a8' a9' a10' a11' a12' a13' (cIntConv a14) a15' (cIntConv a16)
+  withDevicePtr a17 $ \a17' ->
+  --withDevicePtr a18 $ \a18' ->
+  cIntConv `fmap` findModablePeptides'_ a1' a2' a3' a4' a5' (cIntConv a6) (cIntConv a7) a8' a9' a10' a11' a12' a13' a14' a15' (cIntConv a16) a17' (cIntConv a18)
 
 foreign import ccall unsafe "algorithms.h findModablePeptides"
-  findModablePeptides'_ :: {-Ptr Word32 ->-} Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word8 -> Word32 -> IO Word32
+  findModablePeptides'_ :: Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Word32 -> Ptr Word8 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Ptr Word32 -> Word32 -> Ptr Word8 -> Word32 -> IO Word32
 
 calcTotalModCands :: DevicePtr Word32
                   -> DevicePtr Word32
