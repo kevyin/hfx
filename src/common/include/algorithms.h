@@ -220,12 +220,12 @@ void addModIons
     const uint32_t      *d_tc,          // c-terminal indices
     const uint32_t      *d_tn,          // n-terminal indices
 
-    const uint32_t      *_d_mpep_pep_idx,
-    const uint32_t      *_d_mpep_pep_mod_idx,
+    const uint32_t      *d_mpep_pep_idx,
+    const uint32_t      *d_mpep_pep_mod_idx,
     const uint32_t      *d_mpep_unrank,
-    const uint32_t      *_d_mpep_mod_ma_count_sum_scan,
+    const uint32_t      *d_mpep_mod_ma_count_sum_scan,
     const uint32_t      len_unrank,
-    const uint32_t      *_num_mpep,
+    const uint32_t      num_mpep,
 
     const uint32_t      *d_mod_ma_count,
     const float         *d_mod_delta,
@@ -237,9 +237,9 @@ void addModIons
     const uint32_t      len_spec,
     const uint32_t      max_charge,
 
-    const uint32_t      start,
-    const uint32_t      nsearch
+    cudaStream_t        stream
 );
+
 
 /*
  * Generate theoretical spectra

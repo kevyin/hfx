@@ -173,12 +173,11 @@ forceEitherStr (Right a) = a
 sublist :: Int -> Int -> [a] -> [a]
 sublist beg num ls = drop beg $ take (beg+num) ls
 
---
--- split num elements
--- return begining and number of elements in each section of split
-sectionsOfSplit :: Int -> Int -> [(Int,Int)]
-sectionsOfSplit num split = map k [1..split] -- [(start pos, number in section)]
+-- split at multiple points, specified by array of ordered begins
+splitAts :: [a] -> [Int] -> [[a]]
+splitAts elems begins = reverse $ splitAts' elems (reverse begins) 
   where
-    most = ceiling $ (fromIntegral num) / (fromIntegral split) -- most number in a section
-    k n = let next = n*most in 
-          (next - most, if next < num then most else most - (next - num))
+    splitAts' xs (beg:begs) = let (rest, sec) = splitAt beg xs in
+                              [sec] ++ splitAts' rest begs 
+    splitAts' _ _ = []
+
