@@ -1,0 +1,5 @@
+ghc-options: -optc -I/usr/local/cuda/include 
+cc-options:  -I/usr/local/cuda/include 
+ld-options:  -L/usr/local/cuda/lib64  -lcudart -lcuda 
+x-extra-c2hs-options: --cpp=/usr/local/cuda/bin/nvcc --cppopts=-E 
+
