@@ -119,7 +119,7 @@ search :: ConfigParams -> SequenceDB -> HostModInfo -> DeviceModInfo ->  DeviceS
 search cp db hmi dmi dev fp =
   readMS2Data fp >>= \r -> case r of
     Left  s -> hPutStrLn stderr s >>= \_ -> return []
-    Right d -> withExecutionPlan dev (maxConcurrentScans cp) $ \ep -> do
+    Right d -> withExecutionPlan dev (1 + (maxConcurrentScans cp)) $ \ep -> do
       when (verbose cp) $ do
         --hPutStrLn stderr $ "Database: " ++ fp
         hPutStrLn stderr $ " # amino acids: " ++ (show . G.length . dbIon    $ db)

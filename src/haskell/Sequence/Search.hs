@@ -45,7 +45,7 @@ import Prelude                                  hiding (lookup)
 
 import Foreign (sizeOf)
 import Foreign.Marshal.Array (peekArray) 
-import Foreign.CUDA (DevicePtr, withHostPtr)
+import Foreign.CUDA (DevicePtr, HostPtr, withHostPtr)
 import qualified Data.Vector.Generic            as G
 import qualified Data.Vector.Unboxed            as U
 import qualified Foreign.CUDA                   as CUDA
@@ -69,7 +69,8 @@ type CandidatesByModMass = (Int, [Int], DevicePtr Word32, DevicePtr Word32, Devi
 type CandidatesModable = (Int, {-DevicePtr Word32, -}DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32)
 
 -- |Modified peptides from CandidatesModable
-type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, DevicePtr Word32, Int, [Int])
+type ModCandidates = (Int, DevicePtr Word32, DevicePtr Word32, Int, DevicePtr Word32, DevicePtr Word32, [Int])
+type HostModCandidates = (Int, HostPtr Word32, HostPtr Word32, Int, HostPtr Word32, HostPtr Word32)
 
 -- |A device pointer to a theoretical spectrum
 type IonSeries  = DevicePtr Float
@@ -79,6 +80,9 @@ type SpecGroup = ([Spectrum], [Int], [Float], [Float])
 -- |More information about the spectrums
 type SpecGroupData = ([Int], [Int], [Int], [Int])
 
+
+type DeviceModifiedPeptideScores = (DevicePtr Float, DevicePtr Word32)
+type HostModifiedPeptideScores = (HostPtr Float, HostPtr Word32)
 
 nullSpecGroupResult n = replicate n [] 
 --------------------------------------------------------------------------------
@@ -351,19 +355,19 @@ genModCandidates cp ddb dmi (num_cand_massmod, d_pep_idx, d_pep_mod_idx, d_pep_m
   -- calc number of modified peps generated from each pep
   CUDA.mallocArray num_cand_massmod          >>= \d_pep_num_mpep ->         -- number of modified peptides for each peptide
   CUDA.mallocArray (num_cand_massmod*num_ma) >>= \d_pep_ma_num_comb_scan -> -- above scaned for each peptide
-  CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb_scan d_mod_ma_count d_pep_idx d_pep_mod_idx d_pep_ma_count num_cand_massmod num_mod num_ma >>= \num_mpep -> 
+  CUDA.calcTotalModCands d_pep_num_mpep d_pep_ma_num_comb_scan d_mod_ma_count d_pep_idx d_pep_mod_idx d_pep_ma_count num_cand_massmod num_mod num_ma >>= \num_mpep_total -> 
 
-  CUDA.mallocArray num_mpep >>= \d_mpep_rank ->               
-  CUDA.mallocArray num_mpep >>= \d_mpep_ith_cand ->           
+  CUDA.mallocArray num_mpep_total >>= \d_mpep_rank ->               
+  CUDA.mallocArray num_mpep_total >>= \d_mpep_ith_cand ->           
 
-  CUDA.allocaArray num_mpep $ \d_mpep_pep_idx -> --
-  CUDA.allocaArray num_mpep $ \d_mpep_pep_mod_idx -> --
-  CUDA.allocaArray num_mpep $ \d_mpep_mod_ma_count_sum_scan -> --
+  CUDA.allocaArray num_mpep_total $ \d_mpep_pep_idx -> --
+  CUDA.allocaArray num_mpep_total $ \d_mpep_pep_mod_idx -> --
+  CUDA.allocaArray num_mpep_total $ \d_mpep_mod_ma_count_sum_scan -> --
 
-  CUDA.prepareGenMod d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_rank d_mpep_ith_cand d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_num_mpep num_cand_massmod num_mpep >>= \ len_unrank ->
+  CUDA.prepareGenMod d_mpep_pep_idx d_mpep_pep_mod_idx d_mpep_rank d_mpep_ith_cand d_mpep_mod_ma_count_sum_scan d_mod_ma_count_sum d_pep_idx d_pep_mod_idx d_pep_num_mpep num_cand_massmod num_mpep_total >>= \ len_unrank ->
 
   CUDA.allocaArray (len_unrank) $ \d_mpep_unrank -> do --
-    CUDA.genModCands d_mpep_unrank d_mod_ma_count d_mpep_ith_cand d_mpep_rank d_mpep_mod_ma_count_sum_scan d_pep_mod_idx d_pep_ma_count d_pep_ma_num_comb_scan num_mpep num_ma 
+    CUDA.genModCands d_mpep_unrank d_mod_ma_count d_mpep_ith_cand d_mpep_rank d_mpep_mod_ma_count_sum_scan d_pep_mod_idx d_pep_ma_count d_pep_ma_num_comb_scan num_mpep_total num_ma 
 
     -- Find the starts for each spectrum in the list of mpeps
     pep_num_mpep'        <- CUDA.peekListArray num_cand_massmod d_pep_num_mpep
@@ -378,7 +382,7 @@ genModCandidates cp ddb dmi (num_cand_massmod, d_pep_idx, d_pep_mod_idx, d_pep_m
     CUDA.free d_mpep_rank
     CUDA.free d_mpep_ith_cand
 
-    action (num_mpep, d_mpep_pep_idx, d_mpep_pep_mod_idx, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, len_unrank, spec_num_mpep)
+    action (num_mpep_total, d_mpep_pep_idx, d_mpep_pep_mod_idx, len_unrank, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, spec_num_mpep)
 
 --
 -- |Score modified peptides by generating spectrums an then scoring them.
@@ -386,17 +390,30 @@ genModCandidates cp ddb dmi (num_cand_massmod, d_pep_idx, d_pep_mod_idx, d_pep_m
 --
 scoreModCandidates :: ConfigParams -> ExecutionPlan -> DeviceSeqDB -> HostModInfo -> DeviceModInfo -> SpecGroup -> Int -> ModCandidates -> IO [[(Float,Int,PepMod,[Int])]]
 scoreModCandidates cp ep ddb hmi dmi specGrp@(specs,lens,_,_) num_cand_massmod mcands = 
-  let num_spec = length specs
+  let n' = max (numMatches cp) (numMatchesDetail cp) 
+      num_spec = length specs
       max_len = maximum lens
-      (num_mpep, _, _, _, _, _, spec_num_mpep) = mcands
+      (num_mpep_total, _, _, len_unrank, _, _, spec_num_mpep) = mcands
       spec_num_mpep_scan = scanl (+) 0 spec_num_mpep
 
-  in if num_mpep == 0 then return $ nullSpecGroupResult num_spec else 
+      spec_retrieve = map (\num -> min n' num) spec_num_mpep
+      spec_retrieve_scan = scanl (+) 0 spec_retrieve
+      retrieve_total = last spec_retrieve_scan
+      v_mpep_idx = U.enumFromN 0 (num_mpep_total-1)  
+  in if num_mpep_total == 0 then return $ nullSpecGroupResult num_spec else 
 
+  {-CUDA.allocaArray num_mpep $ \d_mpep_idx -> -}
+  CUDA.withVector v_mpep_idx $ \d_mpep_idx ->
   CUDA.withVector (U.concat specs) $ \d_expr -> 
-  CUDA.allocaArray num_mpep $ \d_score -> do
-  {-CUDA.allocaArray num_mpep $ \d_mpep_idx -> do-}
+  CUDA.allocaArray num_mpep_total $ \d_scores -> 
+  CUDA.withHostArray num_mpep_total $ \h_mpep_pep_idx ->
+  CUDA.withHostArray num_mpep_total $ \h_mpep_pep_mod_idx ->
+  CUDA.withHostArray len_unrank     $ \h_mpep_unrank ->
+  CUDA.withHostArray num_mpep_total $ \h_mpep_mod_ma_count_sum_scan ->
 
+  CUDA.withHostArray retrieve_total $ \h_scores ->
+  CUDA.withHostArray retrieve_total $ \h_mpep_idx -> do
+    
     -- predict memory needed and split work accordingly
     (freeMem,_) <- CUDA.getMemInfo 
     let memPerMPep = max_len * sizeOf (undefined :: Word32)
@@ -411,12 +428,13 @@ scoreModCandidates cp ep ddb hmi dmi specGrp@(specs,lens,_,_) num_cand_massmod m
 
       forM_ scorePlans $ \plan -> do
         mkModSpecXCorr ep ddb dmi specGrp spec_num_mpep_scan mcands d_mspec plan
-        sequestXCMod cp ep specGrp spec_num_mpep_scan (d_expr, d_mspec, d_score) plan
+        sequestXCMod cp ep specGrp spec_num_mpep_scan (d_expr, d_mspec, d_scores) plan
 
     -- Sort the score for each expr spec and retrieve
       CUDA.sync
+      return =<< retrieveModScores cp ep hmi dmi spec_num_mpep mcands (num_mpep_total, h_mpep_pep_idx, h_mpep_pep_mod_idx, len_unrank, h_mpep_unrank, h_mpep_mod_ma_count_sum_scan) (d_scores, d_mpep_idx) (h_scores, h_mpep_idx) (spec_retrieve,spec_retrieve_scan)
     
-      return $ nullSpecGroupResult num_spec
+      -- return $ nullSpecGroupResult num_spec
 
 {-
   CUDA.withVector expr $ \d_expr -> 
@@ -454,7 +472,7 @@ mkModSpecXCorr ep ddb dmi specGrp spec_num_mpep_scan mcands d_mspec' scorePlan =
       (_, lens, _, chrgs) = specGrp
       max_chs = map (\chrg -> round $ max 1 (chrg - 1)) chrgs
 
-      (_, d_mpep_pep_idx', d_mpep_pep_mod_idx', d_mpep_unrank, d_mpep_mod_ma_count_sum_scan', len_unrank, _) = mcands
+      (_, d_mpep_pep_idx', d_mpep_pep_mod_idx', len_unrank, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan', _) = mcands
 
       mspec_starts = scanl (+) 0 $ map (\(si,_,n) -> (lens !! si) * n) scorePlan
   in do
@@ -500,41 +518,95 @@ sequestXCMod cp ep specGrp spec_num_mpep_scan (d_all_exprs, d_mspec, d_score') s
 
 
 
-{-retrieveModScores cp-}
-  {-let-}
-      {-n' = max (numMatches cp) (numMatchesDetail cp) -}
-      {-spec_retrieve = map (\num -> min n' num) spec_num_mpep-}
-      {-spec_retrieve_scan = scanl (+) 0 spec_retrieve-}
-      {-retrieve_total = last spec_retrieve_scan-}
-    {--- Sort the results-}
-    {--- and copy asynchronously, thrust sort will not run concurrently,-}
-    {--- so copying asynchronously will only reall have small speed up-}
-    {-forM_ (zip5 spec_retrieve spec_retrieve_scan (cudaStreams ep) spec_num_mpep_scan spec_num_mpep) $ -}
-      {-\(n, ret_start, strm, score_start, num_mpep) -> do-}
-        {-let d_score = d_scores `CUDA.advanceDevPtr` score_start-}
-            {-h_score = h_scores `CUDA.advanceHostPtr` ret_start-}
-            {-d_idx    = d_mpep_idx `CUDA.advanceDevPtr` score_start-}
-            {-h_idx    = h_mpep_idx `CUDA.advanceHostPtr` ret_start-}
+-- @TODO, satisfy scope
+retrieveModScores :: ConfigParams -> ExecutionPlan -> HostModInfo -> DeviceModInfo -> [Int] -> ModCandidates -> HostModCandidates -> DeviceModifiedPeptideScores -> HostModifiedPeptideScores -> ([Int],[Int])  -> IO [[(Float, Int, PepMod, [Int])]]
+retrieveModScores cp ep hmi dmi spec_num_mpep d_mcands h_mcands devModPepScores hostModPepScores (spec_retrieve, spec_retrieve_scan) =
+  let sublist beg num ls = U.drop beg $ U.take (beg + num) ls
+      (num_ma, d_ma, d_ma_mass) = devModAcids dmi 
 
-        {-CUDA.sort_b40c_f d_score d_idx num_mpep -}
+      (_, ma, ma_mass) = modAcids hmi
+      (num_mod, mod_ma_count, mod_ma_count_sum, mod_delta) = modCombs hmi
+
+      spec_num_mpep_scan = scanl (+) 0 spec_num_mpep
+      last_strm = last (cudaStreams ep)
+    
+
+      (num_mpep_total, d_mpep_pep_idx, d_mpep_pep_mod_idx, len_unrank, d_mpep_unrank, d_mpep_mod_ma_count_sum_scan, _) = d_mcands
+
+      (_, h_mpep_pep_idx, h_mpep_pep_mod_idx, 
+       _, h_mpep_unrank, h_mpep_mod_ma_count_sum_scan) = h_mcands
+
+      (d_scores,d_mpep_idx) = devModPepScores
+      (h_scores,h_mpep_idx) = hostModPepScores
+
+      
+  in do
+    -- Peek essential information needed to recreate mods 
+    CUDA.peekArrayAsync num_mpep_total d_mpep_pep_idx h_mpep_pep_idx (Just last_strm)
+    CUDA.peekArrayAsync num_mpep_total d_mpep_pep_mod_idx h_mpep_pep_mod_idx (Just last_strm)
+    CUDA.peekArrayAsync len_unrank     d_mpep_unrank h_mpep_unrank (Just last_strm)
+    CUDA.peekArrayAsync num_mpep_total d_mpep_mod_ma_count_sum_scan h_mpep_mod_ma_count_sum_scan (Just last_strm)
+
+    -- Sort the results
+    -- and copy asynchronously, thrust sort will not run concurrently,
+    -- so copying asynchronously will only reall have small speed up
+    forM_ (zip5 spec_retrieve spec_retrieve_scan (cudaStreams ep) spec_num_mpep_scan spec_num_mpep) $ 
+      \(n, ret_start, strm, score_start, num_mpep) -> do
+        let d_score = d_scores `CUDA.advanceDevPtr` score_start
+            h_score = h_scores `CUDA.advanceHostPtr` ret_start
+            d_idx   = d_mpep_idx `CUDA.advanceDevPtr` score_start
+            h_idx   = h_mpep_idx `CUDA.advanceHostPtr` ret_start
+
+        CUDA.sort_b40c_f d_score d_idx num_mpep 
 
         {--- Retrieve the most relevant matches-}
-        {----}
-        {-CUDA.peekArrayAsync n (d_score `CUDA.advanceDevPtr` (num_mpep-n)) h_score (Just strm)-}
-        {-CUDA.peekArrayAsync n (d_idx `CUDA.advanceDevPtr` (num_mpep-n)) h_idx (Just strm)-}
+        CUDA.peekArrayAsync n (d_score `CUDA.advanceDevPtr` (num_mpep-n)) h_score (Just strm)
+        CUDA.peekArrayAsync n (d_idx `CUDA.advanceDevPtr` (num_mpep-n)) h_idx (Just strm)
 
-    {--- retrieve results-}
-    {-results <- forM (zip3 spec_retrieve spec_retrieve_scan (cudaStreams ep)) $ -}
-      {-\(n, ret_start, strm) -> do-}
-        {-CUDA.block strm-}
-        {-let h_score = h_scores `CUDA.advanceHostPtr` ret_start -}
-            {-h_mpep_idx = h_mpep_idx `CUDA.advanceHostPtr` ret_start-}
+    -- Grab from host arrays
+    CUDA.block last_strm
+    mpi     <- CUDA.peekHostArray num_mpep_total h_mpep_pep_idx
+    mpmi    <- CUDA.peekHostArray num_mpep_total h_mpep_pep_mod_idx
+    mu      <- CUDA.peekHostArray len_unrank     h_mpep_unrank
+    mmmcss  <- CUDA.peekHostArray num_mpep_total h_mpep_mod_ma_count_sum_scan
 
-        {-sc <- withHostPtr h_score $ \ptr -> peekArray n ptr-}
-        {-ix <- withHostPtr h_idx $ \ptr -> peekArray n ptr-}
+    let mpep_pep_idx     = map fromIntegral mpi
+        mpep_pep_mod_idx = map fromIntegral mpmi
+        mpep_unrank      = map fromIntegral mu
+        mpep_mod_ma_count_sum_scan = map fromIntegral mmmcss
 
-        {-return . reverse $ zipWith (\s i -> (s/10000, fromIntegral i)) sc ix-}
-    {-return results -}
+
+    -- retrieve results
+    results <- forM (cudaStreams ep) $ 
+      \strm -> do
+        CUDA.block strm
+
+    scores    <- CUDA.peekHostArray (sum spec_retrieve) h_scores
+    mpep_idx' <- CUDA.peekHostArray (sum spec_retrieve) h_mpep_idx
+
+    let mpep_idx = map fromIntegral mpep_idx'
+
+    let pack s i =
+            let mi = mpep_pep_mod_idx !! i
+            in (s/10000,
+                (mpep_pep_idx !! i), 
+                (getPepMod mi), 
+                (getUnrank i mi))
+        getPepMod mi = 
+            let ma_count = sublist (mi*num_ma) num_ma mod_ma_count
+            in  U.toList $ U.filter (\(_,x,_) -> x /= 0) $
+                           U.zipWith3 (\a b c -> (a, b, c)) ma ma_count ma_mass
+        
+        getUnrank i mi = U.toList $ sublist (mpep_mod_ma_count_sum_scan !! i) 
+                                    (mod_ma_count_sum U.! mi) $ U.fromList mpep_unrank
+    
+        retrieve (r:rs) (ss,ms) = 
+            let (s,s') = splitAt r ss
+                (m,m') = splitAt r ms
+            in [zipWith pack s m] ++ retrieve rs (s',m')
+        retrieve _ _ = []
+
+    return $ retrieve spec_retrieve (scores,mpep_idx)
 
 
 

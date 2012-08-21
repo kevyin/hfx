@@ -11,7 +11,8 @@ module Foreign.CUDA.Util
     sizeOfPtr,
     copyVector,
     withVector,
-    withHostArray
+    withHostArray,
+    peekHostArray
   ) where
 
 import Foreign
@@ -85,4 +86,8 @@ withHostArray l action =
   bracket (CUDA.mallocHostArray [] l) CUDA.freeHost $ \h_ptr ->
     action h_ptr
   -- Release host memory 
-
+  
+{-# INLINE peekHostArray #-}
+peekHostArray :: (Storable a) => Int -> HostPtr a -> IO [a]
+peekHostArray n h_ptr = withHostPtr h_ptr $ \ptr -> Foreign.peekArray n ptr
+  
