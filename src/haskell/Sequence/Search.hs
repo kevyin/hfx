@@ -279,9 +279,8 @@ searchWithMods cp ep sdb ddb hmi dmi specGrp@(specs,lens,masses,chrgs) =
   if num_cand_massmod == 0 then return $ nullSpecGroupResult num_spec else 
   genModCandidates cp ddb dmi candsByMassAndMod num_spec $ \modifiedCands -> do
     results <- scoreModCandidates cp ep ddb hmi dmi specGrp num_cand_massmod modifiedCands 
-    return $ nullSpecGroupResult num_spec 
-    {-return $ map finish $ zip3 chrgs specs results-}
-  {-mapMaybe finish `fmap` scoreModCandidates cp ep ddb hmi dmi modifiedCands (ms2charge ms2) (G.length spec) spec-}
+    return $ map finish $ zip3 chrgs specs results
+    {-return $ nullSpecGroupResult num_spec -}
   
   where
     finish (chrg,spec,sxipu) = 
@@ -399,13 +398,12 @@ scoreModCandidates cp ep ddb hmi dmi specGrp@(specs,lens,_,_) num_cand_massmod m
       spec_retrieve = map (\num -> min n' num) spec_num_mpep
       spec_retrieve_scan = scanl (+) 0 spec_retrieve
       retrieve_total = last spec_retrieve_scan
-      v_mpep_idx = U.enumFromN 0 (num_mpep_total-1)  
+      v_mpep_idx = U.enumFromN 0 num_mpep_total  
   in if num_mpep_total == 0 then return $ nullSpecGroupResult num_spec else 
-
   {-CUDA.allocaArray num_mpep $ \d_mpep_idx -> -}
   CUDA.withVector v_mpep_idx $ \d_mpep_idx ->
-  CUDA.withVector (U.concat specs) $ \d_expr -> 
-  CUDA.allocaArray num_mpep_total $ \d_scores -> 
+  CUDA.withVector (U.concat specs) $ \d_expr ->
+  CUDA.allocaArray num_mpep_total $ \d_scores ->
   CUDA.withHostArray num_mpep_total $ \h_mpep_pep_idx ->
   CUDA.withHostArray num_mpep_total $ \h_mpep_pep_mod_idx ->
   CUDA.withHostArray len_unrank     $ \h_mpep_unrank ->
@@ -418,7 +416,8 @@ scoreModCandidates cp ep ddb hmi dmi specGrp@(specs,lens,_,_) num_cand_massmod m
     (freeMem,_) <- CUDA.getMemInfo 
     let memPerMPep = max_len * sizeOf (undefined :: Word32)
         maxMPep'   = floor $ fromIntegral freeMem / fromIntegral memPerMPep
-        maxMPep    = maxMPep' - 1000
+        maxMPep    = floor $ fromIntegral maxMPep' / 2 
+        {-maxMPep  = maxMPep' - 1000-}
         scorePlans = groupScorePlan maxMPep (zip3 [0..num_spec-1] (replicate num_spec 0) spec_num_mpep)
     CUDA.allocaArray (maxMPep*max_len) $ \d_mspec -> do
       {-(freeMem',_) <- CUDA.getMemInfo -}
@@ -559,7 +558,7 @@ retrieveModScores cp ep hmi dmi spec_num_mpep d_mcands h_mcands devModPepScores 
 
         CUDA.sort_b40c_f d_score d_idx num_mpep 
 
-        {--- Retrieve the most relevant matches-}
+        -- Retrieve the most relevant matches
         CUDA.peekArrayAsync n (d_score `CUDA.advanceDevPtr` (num_mpep-n)) h_score (Just strm)
         CUDA.peekArrayAsync n (d_idx `CUDA.advanceDevPtr` (num_mpep-n)) h_idx (Just strm)
 
@@ -607,6 +606,7 @@ retrieveModScores cp ep hmi dmi spec_num_mpep d_mcands h_mcands devModPepScores 
         retrieve _ _ = []
 
     return $ retrieve spec_retrieve (scores,mpep_idx)
+    {-return $ nullSpecGroupResult (length spec_num_mpep)-}
 
 
 
