@@ -416,8 +416,8 @@ scoreModCandidates cp ep ddb hmi dmi specGrp@(specs,lens,_,_) num_cand_massmod m
     (freeMem,_) <- CUDA.getMemInfo 
     let memPerMPep = max_len * sizeOf (undefined :: Word32)
         maxMPep'   = floor $ fromIntegral freeMem / fromIntegral memPerMPep
-        maxMPep    = floor $ fromIntegral maxMPep' / 2 
-        {-maxMPep  = maxMPep' - 1000-}
+        {-maxMPep    = floor $ fromIntegral maxMPep' / 1.5 -}
+        maxMPep  = maxMPep' - 10000
         scorePlans = groupScorePlan maxMPep (zip3 [0..num_spec-1] (replicate num_spec 0) spec_num_mpep)
     CUDA.allocaArray (maxMPep*max_len) $ \d_mspec -> do
       {-(freeMem',_) <- CUDA.getMemInfo -}
