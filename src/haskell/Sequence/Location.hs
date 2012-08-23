@@ -50,7 +50,8 @@ lookup db k = do
   let (res,c,n) = dbFrag db G.! k
       [a,b]     = G.toList $ G.slice seqIdx 2 (dbIonSeg db)
       hdr       = dbHeader db G.! seqIdx
-      aa        = G.toList $ G.slice (fromIntegral c) (fromIntegral (n-c+1)) (dbIon db)
+      ntake     = if (fromIntegral n) < (G.length $ dbIon db) then n-c+1 else n-c
+      aa        = G.toList $ G.slice (fromIntegral c) (fromIntegral ntake) (dbIon db)
       ca        = if c > a   then dbIon db G.! (fromIntegral c-1) else c2w '-'
       na        = if n < b-1 then dbIon db G.! (fromIntegral n+1) else c2w '-'
 
