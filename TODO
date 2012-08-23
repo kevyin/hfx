@@ -1,0 +1,8 @@
+    - For nomods section: allocate first then score.
+    - similar maxMPep management
+    - Waiting on back40 to implement concurrent sort (w/ streams) for concurrent kernel excution on newer cards
+
+    - Design out small HtoD and DtoH transfers
+        - add all modified peptides first
+            - maybe not used unrank systems, just loop through possiblities
+
