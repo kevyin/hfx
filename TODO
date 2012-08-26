@@ -1,8 +1,18 @@
+    - E values 
+    - TPP
+
+    - Multi GPU
+
     - For nomods section: allocate first then score.
-    - similar maxMPep management
-    - Waiting on back40 to implement concurrent sort (w/ streams) for concurrent kernel excution on newer cards
+        - similar to maxMPep management
 
     - Design out small HtoD and DtoH transfers
-        - add all modified peptides first
-            - maybe not used unrank systems, just loop through possiblities
+                - could solve different mods to same acid limit
 
+    - optimise writing out matrix
+
+
+    - use more efficient data types
+
+
+    - Waiting on back40 to implement concurrent sort (w/ streams) for concurrent kernel excution on newer cards
