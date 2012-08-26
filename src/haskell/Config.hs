@@ -92,7 +92,13 @@ data ConfigParams = ConfigParams
     showMatchesPerScan  :: Bool,
     numMatches          :: Int,         -- # matches to show (summary statistics)
     numMatchesDetail    :: Int,         -- # full protein descriptions to show
-    numMatchesIon       :: Int          -- # ion matching ladders to show
+    numMatchesIon       :: Int,         -- # ion matching ladders to show
+
+    -- 
+    -- E-value configuration
+    --
+    evalueGroupLevel         :: Int,         -- [0,inf)
+    evalueCutOffPerc         :: Float        -- [0,100] Percentage of xcorr distribution to exclude in linear-least-squares fit calculation.
   }
   deriving (Show)
 
@@ -244,7 +250,11 @@ baseParams =  ConfigParams
         showMatchesPerScan  = True,
         numMatches          = 5,
         numMatchesDetail    = 3,
-        numMatchesIon       = 1
+        numMatchesIon       = 1,
+
+
+        evalueGroupLevel    = 10,
+        evalueCutOffPerc    = 10
     }
 
 --
@@ -339,6 +349,14 @@ options =
     , Option "" ["max-modable-acids"]
         (ReqArg (\v cp -> return cp { maxModableAcids = read v }) "INT")
         "Maximum number of modable acids considered per peptide"
+
+    , Option "" ["evalue-group-level"]
+        (ReqArg (\v cp -> return cp { evalueGroupLevel = read v }) "INT")
+        "[0,inf) 0 - No group, Grouping level when making grouped freq distribution"
+
+    , Option "" ["evalue-xcorr-cutoff"]
+        (ReqArg (\v cp -> return cp { evalueCutOffPerc = read v }) "FLOAT")
+        "[0,100] Percentage of right most tail of xcorr freq distribution to ignore"  
 
     , Option "" ["mod_[A..Z]"]
         (ReqArg (\_ cp -> return cp) "FLOAT")

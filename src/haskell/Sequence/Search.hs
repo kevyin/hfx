@@ -34,6 +34,7 @@ import Sequence.IonSeries
 import Util.Misc                                hiding (sublist)
 import Util.C2HS
 import Util.Time
+import Util.Statistics
 import Execution                                
 
 import Data.Word
