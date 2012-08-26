@@ -207,7 +207,8 @@ sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec
       all_exprs = U.concat exprs
       spec_len_scan = scanl (+) 0 spec_lens
       spec_num_pep_scan = scanl (+) 0 spec_num_pep
-      spec_retrieve = map (\num_pep -> min n' num_pep) spec_num_pep
+      {-spec_retrieve = map (\num_pep -> min n' num_pep) spec_num_pep-}
+      spec_retrieve = spec_num_pep
       spec_retrieve_scan = scanl (+) 0 spec_retrieve
       retrieve_total = last spec_retrieve_scan
       (cand_total, num_spec, 
@@ -262,7 +263,7 @@ sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec
             h_idx    = h_spec_pep_idx `CUDA.advanceHostPtr` ret_start
 
         sc <- withHostPtr h_score $ \ptr -> peekArray n ptr
-        ix <- withHostPtr h_idx $ \ptr -> peekArray n ptr
+        ix <- withHostPtr h_idx   $ \ptr -> peekArray n ptr
 
         return . reverse $ zipWith (\s i -> (s/10000, fromIntegral i)) sc ix
     return results 
@@ -396,7 +397,8 @@ scoreModCandidates cp ep ddb hmi dmi specGrp@(specs,lens,_,_) num_cand_massmod m
       (num_mpep_total, _, _, len_unrank, _, _, spec_num_mpep) = mcands
       spec_num_mpep_scan = scanl (+) 0 spec_num_mpep
 
-      spec_retrieve = map (\num -> min n' num) spec_num_mpep
+      {-spec_retrieve = map (\num -> min n' num) spec_num_mpep-}
+      spec_retrieve = spec_num_mpep
       spec_retrieve_scan = scanl (+) 0 spec_retrieve
       retrieve_total = last spec_retrieve_scan
       v_mpep_idx = U.enumFromN 0 num_mpep_total  
@@ -432,7 +434,7 @@ scoreModCandidates cp ep ddb hmi dmi specGrp@(specs,lens,_,_) num_cand_massmod m
 
     -- Sort the score for each expr spec and retrieve
       CUDA.sync
-      return =<< retrieveModScores cp ep hmi dmi spec_num_mpep mcands (num_mpep_total, h_mpep_pep_idx, h_mpep_pep_mod_idx, len_unrank, h_mpep_unrank, h_mpep_mod_ma_count_sum_scan) (d_scores, d_mpep_idx) (h_scores, h_mpep_idx) (spec_retrieve,spec_retrieve_scan)
+      return =<< retrieveModScores cp ep hmi dmi spec_num_mpep mcands (num_mpep_total, h_mpep_pep_idx, h_mpep_pep_mod_idx, len_unrank, h_mpep_unrank, h_mpep_mod_ma_count_sum_scan) (d_scores, d_mpep_idx) (h_scores, h_mpep_idx) (retrieve_total, spec_retrieve,spec_retrieve_scan)
     
       -- return $ nullSpecGroupResult num_spec
 
@@ -519,8 +521,8 @@ sequestXCMod cp ep specGrp spec_num_mpep_scan (d_all_exprs, d_mspec, d_score') s
 
 
 -- @TODO, satisfy scope
-retrieveModScores :: ConfigParams -> ExecutionPlan -> HostModInfo -> DeviceModInfo -> [Int] -> ModCandidates -> HostModCandidates -> DeviceModifiedPeptideScores -> HostModifiedPeptideScores -> ([Int],[Int])  -> IO [[(Float, Int, PepMod, [Int])]]
-retrieveModScores cp ep hmi dmi spec_num_mpep d_mcands h_mcands devModPepScores hostModPepScores (spec_retrieve, spec_retrieve_scan) =
+retrieveModScores :: ConfigParams -> ExecutionPlan -> HostModInfo -> DeviceModInfo -> [Int] -> ModCandidates -> HostModCandidates -> DeviceModifiedPeptideScores -> HostModifiedPeptideScores -> (Int,[Int],[Int])  -> IO [[(Float, Int, PepMod, [Int])]]
+retrieveModScores cp ep hmi dmi spec_num_mpep d_mcands h_mcands devModPepScores hostModPepScores (retrieve_total, spec_retrieve, spec_retrieve_scan) =
   let sublist beg num ls = U.drop beg $ U.take (beg + num) ls
       (num_ma, d_ma, d_ma_mass) = devModAcids dmi 
 
@@ -575,17 +577,6 @@ retrieveModScores cp ep hmi dmi spec_num_mpep d_mcands h_mcands devModPepScores 
         mpep_unrank      = map fromIntegral mu
         mpep_mod_ma_count_sum_scan = map fromIntegral mmmcss
 
-
-    -- retrieve results
-    results <- forM (cudaStreams ep) $ 
-      \strm -> do
-        CUDA.block strm
-
-    scores    <- CUDA.peekHostArray (sum spec_retrieve) h_scores
-    mpep_idx' <- CUDA.peekHostArray (sum spec_retrieve) h_mpep_idx
-
-    let mpep_idx = map fromIntegral mpep_idx'
-
     let pack s i =
             let mi = mpep_pep_mod_idx !! i
             in (s/10000,
@@ -599,14 +590,25 @@ retrieveModScores cp ep hmi dmi spec_num_mpep d_mcands h_mcands devModPepScores 
         
         getUnrank i mi = U.toList $ sublist (mpep_mod_ma_count_sum_scan !! i) 
                                     (mod_ma_count_sum U.! mi) $ U.fromList mpep_unrank
-    
-        retrieve (r:rs) (ss,ms) = 
-            let (s,s') = splitAt r ss
-                (m,m') = splitAt r ms
-            in [zipWith pack s m] ++ retrieve rs (s',m')
-        retrieve _ _ = []
 
-    return $ retrieve spec_retrieve (scores,mpep_idx)
+    -- retrieve results
+    results <- forM (zip3 spec_retrieve spec_retrieve_scan (cudaStreams ep)) $ 
+      \(n,ret_start,strm) -> do
+        CUDA.block strm
+        let h_score = h_scores `CUDA.advanceHostPtr` ret_start
+            h_idx   = h_mpep_idx `CUDA.advanceHostPtr` ret_start
+
+        sc  <- withHostPtr h_score $ \ptr -> peekArray n ptr
+        ix' <- withHostPtr h_idx   $ \ptr -> peekArray n ptr
+
+        let ix = map fromIntegral ix'
+
+        return . reverse $ zipWith pack sc ix
+
+
+
+
+    return results
     {-return $ nullSpecGroupResult (length spec_num_mpep)-}
 
 
