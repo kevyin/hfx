@@ -99,12 +99,12 @@ printConfig cp fp ms2 = displayIO . ppAsRows 0 . map (intersperse (text "::")) $
 --------------------------------------------------------------------------------
 
 title :: [[Doc]]
-title = map (map text) [[" # ", " (M+H)+  ", "deltCn", "XCorr", "Ions", "Reference", "Peptide"],
-                        ["---", "---------", "------", "-----", "----", "---------", "-------"]]
+title = map (map text) [[" # ", " (M+H)+  ", "deltCn", "XCorr", "Ions", "Reference", "Peptide", "E-value"],
+                        ["---", "---------", "------", "-----", "----", "---------", "-------", "-------"]]
 
 titleAll :: [[Doc]]
-titleAll = map (map text) [[" # ", " (M+H)+  ", "deltCn", "XCorr", "Ions", "Reference", "Peptide", "Scan details", "File"],
-                        ["---", "---------", "------", "-----", "----", "---------", "-------", "------------", "----"]]
+titleAll = map (map text) [[" # ", " (M+H)+  ", "deltCn", "XCorr", "Ions", "Reference", "Peptide", "E-value", "Scan details", "File"],
+                        ["---", "---------", "------", "-----", "----", "---------", "-------", "-------", "------------", "----"]]
 
 titleIon :: [B.Box]
 titleIon = map (B.vcat B.center2)
@@ -113,20 +113,21 @@ titleIon = map (B.vcat B.center2)
 
 
 toDoc :: Int -> Float -> Match -> [Doc]
-toDoc n s0 m@(Match frag sc _ p u) =
-    [ space <> int n <> char '.'
-    , float' (fragmass frag)
-    , float' (realToFrac ((s0 - sc)/s0))
-    , float' (realToFrac sc)
-    , int    (fst sp) <> char '/' <> int (snd sp)
-    , ppr    (fraglabel frag)
-    , ppr    (fragdata  frag)
+toDoc n s0 m@(Match frag sc _ p u e) =
+    [ space <> int n <> char '.'                       -- ^ #
+    , float' (fragmass frag)                           -- ^ (M+H)+
+    , float' (realToFrac ((s0 - sc)/s0))               -- ^ deltCn
+    , float' (realToFrac sc)                           -- ^ XCorr
+    , int    (fst sp) <> char '/' <> int (snd sp)      -- ^ Ions
+    , ppr    (fraglabel frag)                          -- ^ Reference
+    , ppr    (fragdata  frag)                          -- Peptide
+    , float' (realToFrac e)                            -- E-value
     ]
     where float' = text . flip (showFFloat (Just 4)) ""
           sp     = scoreSP m
 
 toDocDetail :: Int -> Match -> B.Box
-toDocDetail n (Match frag _ _ _ _) = B.hsep 2 B.top
+toDocDetail n (Match frag _ _ _ _ _) = B.hsep 2 B.top
     [ B.alignHoriz B.right 3 $ B.text (shows n ".")
     , B.para B.left cols     $ L.unpack (fragheader frag)
     ]
@@ -134,7 +135,7 @@ toDocDetail n (Match frag _ _ _ _) = B.hsep 2 B.top
         cols = 95       -- for a total width of 100 columns
 
 toIonDetail :: ConfigParams -> Match -> [B.Box]
-toIonDetail cp (Match f _ (b,y) _ _) = map (B.vcat B.right)
+toIonDetail cp (Match f _ (b,y) _ _ _) = map (B.vcat B.right)
     [ map B.char (L.unpack pep)
     , map (B.text . show) [1 .. L.length pep]
     , map showIon (zip ladder b) ++ ["-     "]

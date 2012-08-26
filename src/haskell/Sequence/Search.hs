@@ -130,7 +130,7 @@ searchWithoutMods cp ep sdb ddb specGrp@(specs,lens,masses,chrgs) =
   
   where
     finish (chrg,spec,sxis) = 
-      let finish' (sx,i) = liftM (\f -> Match f sx (sp f) [] []) (lookup sdb i)
+      let finish' (sx,i) = liftM (\f -> Match f sx (sp f) [] [] 0) (lookup sdb i)
           sp f  = matchIonSequence cp chrg (extractPeaks spec) f
       in  mapMaybe finish' sxis
 
@@ -284,7 +284,7 @@ searchWithMods cp ep sdb ddb hmi dmi specGrp@(specs,lens,masses,chrgs) =
   
   where
     finish (chrg,spec,sxipu) = 
-        let finish' (sx,i,pmod,u) = liftM (\f -> Match (modifyFragment pmod u f) sx (sp f) pmod u) (lookup sdb i)
+        let finish' (sx,i,pmod,u) = liftM (\f -> Match (modifyFragment pmod u f) sx (sp f) pmod u 0) (lookup sdb i)
             sp f = matchIonSequence cp chrg (extractPeaks spec) f
         in mapMaybe finish' sxipu
 

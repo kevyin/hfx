@@ -21,16 +21,17 @@ data Match = Match
     matchSP  :: ([Bool], [Bool]), -- Matched ion sequences
 --  scoreSP  :: (Int, Int)        -- Matched ions / total ions
     pepMod   :: PepMod,
-    unrank   :: [Int]
+    unrank   :: [Int],
+    evalue   :: Double
   }
   deriving (Show)
 
 instance Eq Match where
-  Match f s p pm u == Match f' s' p' pm' u' =  f == f' && p == p' && (s-s')/(s+s'+0.0005) < 0.0005 && pm == pm' && u == u'
+  Match f s p pm u _ == Match f' s' p' pm' u' _ =  f == f' && p == p' && (s-s')/(s+s'+0.0005) < 0.0005 && pm == pm' && u == u'
 
 
 scoreSP :: Match -> (Int, Int)
-scoreSP (Match f _ (b,y) _ _) = (matched, total)
+scoreSP (Match f _ (b,y) _ _ _) = (matched, total)
   where
     boolToInt True  = 1
     boolToInt False = 0
@@ -39,6 +40,6 @@ scoreSP (Match f _ (b,y) _ _) = (matched, total)
     matched = sum . map boolToInt $ b ++ y
 
 matchScoreOrder :: Match -> Match -> Ordering
-matchScoreOrder (Match _ s1 _ _ _) (Match _ s2 _ _ _) = compare s2 s1
+matchScoreOrder (Match _ s1 _ _ _ _) (Match _ s2 _ _ _ _) = compare s2 s1
 
     
