@@ -31,6 +31,7 @@ import Sequence.Match
 import Sequence.Fragment
 import Sequence.Location
 import Sequence.IonSeries
+import GHC.Float
 import Util.Misc                                hiding (sublist)
 import Util.C2HS
 import Util.Time
@@ -115,7 +116,11 @@ searchForMatches cp ep sdb ddb hmi dmi ms2s =
                     _      -> searchWithMods cp ep sdb ddb hmi dmi specGrp
 
   results <- forM (zip3 ms2s matches matchesMods) $ \(ms2, m, mm) -> do
-      return $ (ms2,sortBy matchScoreOrder $ (mm ++ m))
+      let allMatches = sortBy matchScoreOrder  (mm ++ m)
+      -- Add evalues to matches
+      ev <- evalues cp $ map (\m -> float2Double $ 10000 * (scoreXC m)) allMatches 
+      let matchesWithEvalues = map (\(m, e) -> m { evalue = e }) $ zip allMatches ev
+      return $ (ms2,reverse matchesWithEvalues)
   return results 
 
 --

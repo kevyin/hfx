@@ -27,7 +27,7 @@ type Plot = ([Double], [Double])
 -- where n is the total number of peptides scored and s is the survival function
 -- of p(x) the probability distribution of x.
 --
--- let binSize = evalueGroupLevel 
+-- let binSize = evalueBinWidth
 --
 --------------------------------------------------------------------------------
 -- Takes advantage that sc is sorted in ascending order
@@ -38,11 +38,11 @@ evalues cp sc = do
     --let ev = map (\x -> let x' = alpha + beta * (logBase 10 x) in (10**x') * fromIntegral(length sc)) sc 
     let ev = map (\x -> let x' = alpha + beta * (x/10000) in (10**x')) sc 
 
-    when (verbose cp) $ do
-        hPutStrLn stderr $ "Evalues"
-        hPutStrLn stderr $ "Alpha = " ++ shows alpha " " ++
-                           "Beta = "  ++ show  beta
-        --outputScores "evalues.csv" ev
+    {-when (verbose cp) $ do-}
+        {-hPutStrLn stderr $ "Evalues"-}
+        {-hPutStrLn stderr $ "Alpha = " ++ shows alpha " " ++-}
+                           {-"Beta = "  ++ show  beta-}
+        {-outputScores "evalues.csv" ev-}
     return ev
 
 linearFitLine :: ConfigParams -> [Double] -> IO (Double, Double)
@@ -50,7 +50,7 @@ linearFitLine cp sc = do
     when (verbose cp) $ do
         putStrLn $ "Number of peptides scored " ++ (show n)
         --putStrLn $ "cut " ++ (show cut)
-        ----outputScores "scores.csv" sc
+        {-outputScores "scores.csv" sc-}
         outputCSV "hist.csv"    (x,h)
         --outputCSV "logxVh.csv"    (logx,h)
         outputCSV "xVlogh.csv"    (x,logh)
@@ -87,7 +87,7 @@ linearFitLine cp sc = do
 
 histogram cp xs = (x, h)
     where
-        binWidth  = fromIntegral $ evalueGroupLevel cp
+        binWidth  = fromIntegral $ evalueBinWidth cp
         halfWidth = binWidth / 2
         (x, c)    = unzip $ uniqCount (map (valBin.ithBin) xs)
         h         = map (\x -> (x / (binWidth))) c
@@ -102,7 +102,7 @@ probHist :: (Integral a) => ConfigParams -> a -> [Double] -> Plot
 probHist cp n xs = (x, p)
     where
         n'        = fromIntegral n
-        binWidth  = fromIntegral $ evalueGroupLevel cp
+        binWidth  = fromIntegral $ evalueBinWidth cp
         halfWidth = binWidth / 2
         (x, c)    = unzip $ uniqCount (map (valBin.ithBin) xs)
         p         = map (\x -> (x / (n'*binWidth))) c
@@ -111,13 +111,11 @@ probHist cp n xs = (x, p)
         -- given the ith bin, what is it's middle value
         valBin i = i * binWidth - halfWidth
 
+
 -- Survival function s(x)
 -- Assumes x is sorted in ascending order
--- Since x is likely to be sparse, fill the missing x values and corresponding s values
 survivalFn :: Plot -> Plot
---survivalFn (x, p) = unzip $ fill $ zip x s
 survivalFn (x, p) = (x, s)
-    --unzip $ fill $ zip x s
     where
         -- s is effectively reverse cumulative sum (from right to left) of p 
         -- assuming list is in ascending order
@@ -161,23 +159,4 @@ outputScores fp (x:xs) = do
     appendFile fp $ (show x) ++ "\n"
     outputScores fp xs
 outputScores fp _    = putStrLn $ "wrote to " ++ (show fp)
-
--- produce a list of typles with first element enumerated from x to x'
-fillWith x x' y = fg [(x)..(x')] y
-    where
-        fg (i:is) j = (i, j) : fg is j
-        fg [] _ = []
-
--- returns: [(-3,40, (-2,30), (-1,30), (0,30), (1,30), (2,20), (3,20), (4,20), (5,20), (6,10))]
-fill :: (Enum a, Num a, Ord a, Show a, Show b) => [(a, b)] -> [(a, b)]
-fill [p] = [p]
-fill a@(p@(x, y):ps) = let fs@((x', y'):_) = fill ps in fs `seq` 
-    if (x < x' - 1) then
-        --fill $ p : ((x' - 1), y') : fs  very recursive form
-        p : (fillWith (x + 1) (x' - 1) y') ++ fs
-    else
-        p : fs
-    --where
-        --fs@((x', y'):_) = fill ps
-fill [] = error ("Statistics.hs: fill encountered empty list")
 

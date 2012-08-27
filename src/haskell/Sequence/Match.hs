@@ -40,6 +40,6 @@ scoreSP (Match f _ (b,y) _ _ _) = (matched, total)
     matched = sum . map boolToInt $ b ++ y
 
 matchScoreOrder :: Match -> Match -> Ordering
-matchScoreOrder (Match _ s1 _ _ _ _) (Match _ s2 _ _ _ _) = compare s2 s1
+matchScoreOrder (Match _ s1 _ _ _ _) (Match _ s2 _ _ _ _) = compare s1 s2
 
     

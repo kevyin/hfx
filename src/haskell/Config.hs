@@ -97,7 +97,7 @@ data ConfigParams = ConfigParams
     -- 
     -- E-value configuration
     --
-    evalueGroupLevel         :: Int,         -- [0,inf)
+    evalueBinWidth           :: Int,         -- [0,inf)
     evalueCutOffPerc         :: Float        -- [0,100] Percentage of xcorr distribution to exclude in linear-least-squares fit calculation.
   }
   deriving (Show)
@@ -253,7 +253,7 @@ baseParams =  ConfigParams
         numMatchesIon       = 1,
 
 
-        evalueGroupLevel    = 10,
+        evalueBinWidth      = 10,
         evalueCutOffPerc    = 10
     }
 
@@ -350,8 +350,8 @@ options =
         (ReqArg (\v cp -> return cp { maxModableAcids = read v }) "INT")
         "Maximum number of modable acids considered per peptide"
 
-    , Option "" ["evalue-group-level"]
-        (ReqArg (\v cp -> return cp { evalueGroupLevel = read v }) "INT")
+    , Option "" ["evalue-bin-width"]
+        (ReqArg (\v cp -> return cp { evalueBinWidth = read v }) "INT")
         "[0,inf) 0 - No group, Grouping level when making grouped freq distribution"
 
     , Option "" ["evalue-xcorr-cutoff"]
