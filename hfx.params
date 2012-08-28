@@ -40,5 +40,5 @@ num-matches-detail      = 3
 #
 # E-value properties
 #
-evalue-bin-width        = 100
-evalue-xcorr-cutoff     = 1
+evalue-bin-width        = 350
+evalue-xcorr-cutoff     = 3

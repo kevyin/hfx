@@ -66,15 +66,16 @@ linearFitLine cp sc = do
         --outputCSV "xVlogs.csv" ((fst survF),logs)
     return $ linearRegression (U.fromList x) (U.fromList logh)
     where 
-          n      = length $ sc  -- total number of peptides scored
-          cut    = round ((1 - (evalueCutOffPerc cp) / 100) * fromIntegral (n))
-          --sc'    = filter (> 0) $ take cut sc
-          sc''    = map (\x -> x + 1 + (-1) * (head sc)) $ take cut sc
-          sc'    = filter (flip (>) 4000) sc''
-          (x', h) = histogram cp sc'
-          x      = map (\x -> x/10000) x'
-          --logx   = map (logBase 10) x
-          logh   = map (logBase 10) h
+          n         = length $ sc  -- total number of peptides scored
+          cut_end   = round ((1 - (evalueCutOffPerc cp) / 100) * fromIntegral (n))
+          cut_beg   = round ((30 / 100) * fromIntegral (n))
+          --sc'     = filter (> 0) $ take cut sc
+          sc''      = map (\x -> x + 1 + (-1) * (head sc)) $ drop cut_beg $ take cut_end sc
+          sc'       = filter (flip (>) 4000) sc''
+          (x', h)   = histogram cp sc'
+          x         = map (\x -> x/10000) x'
+          --logx    = map (logBase 10) x
+          logh      = map (logBase 10) h
           
           --probD  = probHist cp n sc'
           --survF  = survivalFn probD
