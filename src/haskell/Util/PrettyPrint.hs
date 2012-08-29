@@ -121,9 +121,10 @@ toDoc n s0 m@(Match frag sc _ p u e) =
     , int    (fst sp) <> char '/' <> int (snd sp)      -- ^ Ions
     , ppr    (fraglabel frag)                          -- ^ Reference
     , ppr    (fragdata  frag)                          -- Peptide
-    , float' (realToFrac e)                            -- E-value
+    , float'' (realToFrac e)                           -- E-value
     ]
     where float' = text . flip (showFFloat (Just 4)) ""
+          float'' = text . flip (showEFloat (Just 4)) ""
           sp     = scoreSP m
 
 toDocDetail :: Int -> Match -> B.Box
