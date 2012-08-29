@@ -118,8 +118,8 @@ searchForMatches cp ep sdb ddb hmi dmi ms2s =
   results <- forM (zip3 ms2s matches matchesMods) $ \(ms2, m, mm) -> do
       let allMatches = sortBy matchScoreOrder  (mm ++ m)
       -- Add evalues to matches
-      ev <- evalues cp $ map (\m -> float2Double $ 10000 * (scoreXC m)) allMatches 
-      let matchesWithEvalues = map (\(m, e) -> m { evalue = e }) $ zip allMatches ev
+      ev <- evalues cp $ map (\m -> float2Double $ (scoreXC m)) allMatches 
+      let matchesWithEvalues = map (\(m, e) -> let s' = scoreXC m in m { evalue = e, scoreXC = s'/10000 }) $ zip allMatches ev
       return $ (ms2,reverse matchesWithEvalues)
   return results 
 
@@ -270,7 +270,7 @@ sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec
         sc <- withHostPtr h_score $ \ptr -> peekArray n ptr
         ix <- withHostPtr h_idx   $ \ptr -> peekArray n ptr
 
-        return . reverse $ zipWith (\s i -> (s/10000, fromIntegral i)) sc ix
+        return . reverse $ zipWith (\s i -> (s, fromIntegral i)) sc ix
     return results 
 
 --
@@ -584,7 +584,7 @@ retrieveModScores cp ep hmi dmi spec_num_mpep d_mcands h_mcands devModPepScores 
 
     let pack s i =
             let mi = mpep_pep_mod_idx !! i
-            in (s/10000,
+            in (s,
                 (mpep_pep_idx !! i), 
                 (getPepMod mi), 
                 (getUnrank i mi))

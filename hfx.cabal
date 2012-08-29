@@ -42,6 +42,7 @@ Executable hfx
                        bio                      >= 0.5 && < 0.6,
                        boxes,
                        bytestring               >= 0.9 && < 0.10,
+                       bytestring-show, 
                        cuda                     >= 0.4,
                        cublas,
                        directory                >= 1.0 && < 1.2,

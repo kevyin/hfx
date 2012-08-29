@@ -14,6 +14,8 @@ import Data.List
 import qualified Data.Vector.Unboxed as U
 import Statistics.LinearRegression
 import Control.Monad
+import qualified Data.ByteString.Lazy as L
+import qualified Text.Show.ByteString as B (show)
 
 type Bin  = Double
 type Plot = ([Double], [Double])
@@ -47,13 +49,13 @@ evalues cp sc = do
 
 linearFitLine :: ConfigParams -> [Double] -> IO (Double, Double)
 linearFitLine cp sc = do
-    when (verbose cp) $ do
-        putStrLn $ "Number of peptides scored " ++ (show n)
+    when (evalueWriteHist cp) $ do
+        {-putStrLn $ "Number of peptides scored " ++ (show n)-}
         --putStrLn $ "cut " ++ (show cut)
         {-outputScores "scores.csv" sc-}
-        outputCSV "hist.csv"    (x,h)
+        {-outputCSV "hist.csv"    (x,h)-}
         --outputCSV "logxVh.csv"    (logx,h)
-        outputCSV "xVlogh.csv"    (x,logh)
+        outputCSV "score_vs_logCount_histogram.csv"    (x,logh)
         --outputCSV "logxVlogh.csv"    (logx,logh)
         --outputCSV "probD.csv"    probD
         --outputCSV "probVlnx.csv"   (lnx, (snd probD))
@@ -151,13 +153,13 @@ outputCSV :: (Show a, Show b) => FilePath -> ([a],[b]) -> IO ()
 outputCSV fp (x, y) = outputCSV' x y 
     where
         outputCSV' (a:as) (b:bs) = do
-            appendFile fp $ (show a) ++ "," ++ (show b) ++ "\n"
+            L.appendFile fp $ B.show $ (show a) ++ "," ++ (show b) ++ "\n"
             outputCSV' as bs
         outputCSV' _      _      = putStrLn $ "wrote to " ++ (show fp)
 
 outputScores :: (Show a) => FilePath -> [a] -> IO ()
 outputScores fp (x:xs) = do
-    appendFile fp $ (show x) ++ "\n"
+    L.appendFile fp $ B.show $ (show x) ++ "\n"
     outputScores fp xs
 outputScores fp _    = putStrLn $ "wrote to " ++ (show fp)
 

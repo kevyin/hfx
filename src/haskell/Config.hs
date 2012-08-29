@@ -98,7 +98,8 @@ data ConfigParams = ConfigParams
     -- E-value configuration
     --
     evalueBinWidth           :: Int,         -- [0,inf)
-    evalueCutOffPerc         :: Float        -- [0,100] Percentage of xcorr distribution to exclude in linear-least-squares fit calculation.
+    evalueCutOffPerc         :: Float,        -- [0,100] Percentage of xcorr distribution to exclude in linear-least-squares fit calculation.
+    evalueWriteHist          :: Bool
   }
   deriving (Show)
 
@@ -253,8 +254,9 @@ baseParams =  ConfigParams
         numMatchesIon       = 1,
 
 
-        evalueBinWidth      = 10,
-        evalueCutOffPerc    = 10
+        evalueBinWidth      = 350,
+        evalueCutOffPerc    = 3,
+        evalueWriteHist     = False
     }
 
 --
@@ -352,11 +354,18 @@ options =
 
     , Option "" ["evalue-bin-width"]
         (ReqArg (\v cp -> return cp { evalueBinWidth = read v }) "INT")
-        "[0,inf) 0 - No group, Grouping level when making grouped freq distribution"
+        "[0,inf) 0 - No group, Width of (10000*score) bin when making grouped freq distribution"
 
-    , Option "" ["evalue-xcorr-cutoff"]
+    , Option "" ["evalue-high-cutoff-percentage"]
         (ReqArg (\v cp -> return cp { evalueCutOffPerc = read v }) "FLOAT")
         "[0,100] Percentage of right most tail of xcorr freq distribution to ignore"  
+
+    , Option "" ["evalue-write-histogram"]
+        (OptArg (\v cp -> return $ case v of
+                            Nothing    -> cp { evalueWriteHist = False}
+                            Just []    -> cp { evalueWriteHist = False}
+                            Just (x:_) -> cp { evalueWriteHist = toLower x `elem` "t1" }) "True|False")
+        "Write score vs log count in a .csv file"  
 
     , Option "" ["mod_[A..Z]"]
         (ReqArg (\_ cp -> return cp) "FLOAT")

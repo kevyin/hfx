@@ -40,5 +40,15 @@ num-matches-detail      = 3
 #
 # E-value properties
 #
-evalue-bin-width        = 350
-evalue-xcorr-cutoff     = 3
+
+# 10000 * Score bin size 
+evalue-bin-width                = 350
+
+# Percentage of scores to cut off 
+# from the high value end of the histogram
+evalue-high-cutoff-percentage   = 3
+
+# Write to csv a score vs log(count of score)
+# Generally a "linear" distribution indicates a
+# good bin width and cutoff
+evalue-write-histogram          = False
