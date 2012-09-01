@@ -231,7 +231,7 @@ baseParams =  ConfigParams
         databasePath        = Nothing,
         outputPath          = Nothing,
 
-        massTolerance       = 3.0,
+        massTolerance       = 0.01,
         removePrecursorPeak = True,
         missedCleavages     = 2,
         digestionRule       = getDigestionRule 1, -- Trypsin

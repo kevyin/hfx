@@ -2,7 +2,7 @@
 # Enzyme database search parameters
 #
 database                = data/uniprot_sprot_human+trypsin.fasta
-mass-tolerance          = 1
+mass-tolerance          = 0.01
 remove-precursor-peak   = True
 missed-cleavages        = 0
 digestion-rule          = 1
