@@ -193,7 +193,8 @@ mkSpecXCorr ddb specCands (_,lens,_,chrgs) action =
       let bytes = fromIntegral $ total_len * CUDA.sizeOfPtr d_specs
       CUDA.memset  d_specs bytes 0
       forM_ (zip5 [0..num_spec-1] spec_num_pep spec_sum_len_scan max_chs lens) $ 
-        \(spec_idx, num_idx, thry_start, chrg, len) -> do
+        \(spec_idx, num_idx, thry_start, chrg, len) -> 
+        if num_idx == 0 then return () else do
           let d_idx = d_pep_idx_r_sorted `CUDA.advanceDevPtr` (spec_begin !! spec_idx) 
               d_specs' = d_specs `CUDA.advanceDevPtr` thry_start 
           
@@ -229,7 +230,8 @@ sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec
     -- For each spectrum score each candidate sequence
     -- Hopefully thec multiplication will run concurrently
     forM_ (zip7 [0..num_spec-1] (cudaStreams ep) spec_sum_len_scan spec_len_scan spec_num_pep_scan spec_num_pep spec_lens) $ 
-      \(spec_idx, strm, thry_start, spec_start, score_start, num_pep, len) -> do
+      \(spec_idx, strm, thry_start, spec_start, score_start, num_pep, len) -> 
+      if num_pep == 0 then return () else do
         let m        = num_pep 
             n        = len
             d_thry'  = d_thry `CUDA.advanceDevPtr` thry_start
@@ -246,7 +248,8 @@ sequestXC cp ddb ep spc exprs ((spec_lens, spec_sum_len_scan, spec_num_pep, spec
     -- and copy asynchronously, thrust sort will not run concurrently,
     -- so copying asynchronously will only reall have small speed up
     forM_ (zip5 spec_retrieve spec_retrieve_scan (cudaStreams ep) spec_num_pep_scan spec_num_pep) $ 
-      \(n, ret_start, strm, score_start, num_pep) -> do
+      \(n, ret_start, strm, score_start, num_pep) -> 
+      if num_pep == 0 then return () else do
         let d_score = d_scores `CUDA.advanceDevPtr` score_start
             h_score = h_scores `CUDA.advanceHostPtr` ret_start
             d_idx    = d_spec_pep_idx `CUDA.advanceDevPtr` score_start
@@ -485,7 +488,8 @@ mkModSpecXCorr ep ddb dmi specGrp spec_num_mpep_scan mcands d_mspec' scorePlan =
   in do
 
     forM_ (zip3 (cudaStreams ep) scorePlan mspec_starts) $
-      \(stream, (spec_idx, ith_spec_mpep, num_mpep), mspec_start) -> do
+      \(stream, (spec_idx, ith_spec_mpep, num_mpep), mspec_start) -> 
+      if num_mpep == 0 then return () else do
         let first_mpep_idx = (spec_num_mpep_scan !! spec_idx) + ith_spec_mpep
             d_mspec = d_mspec' `CUDA.advanceDevPtr` mspec_start
             d_mpep_pep_idx = d_mpep_pep_idx' `CUDA.advanceDevPtr` first_mpep_idx 
@@ -509,7 +513,8 @@ sequestXCMod cp ep specGrp spec_num_mpep_scan (d_all_exprs, d_mspec, d_score') s
       spec_len_scan = scanl (+) 0 lens
   in do
     forM_ (zip3 (cudaStreams ep) scorePlan mspec_starts) $
-      \(stream, (spec_idx, ith_spec_mpep, num_mpep), mspec_start) -> do
+      \(stream, (spec_idx, ith_spec_mpep, num_mpep), mspec_start) -> 
+      if num_mpep == 0 then return () else do
         let first_mpep_idx = (spec_num_mpep_scan !! spec_idx) + ith_spec_mpep
             d_thry   = d_mspec `CUDA.advanceDevPtr` mspec_start
             d_expr   = d_all_exprs `CUDA.advanceDevPtr` (spec_len_scan !! spec_idx)
@@ -558,7 +563,8 @@ retrieveModScores cp ep hmi dmi spec_num_mpep d_mcands h_mcands devModPepScores 
     -- and copy asynchronously, thrust sort will not run concurrently,
     -- so copying asynchronously will only reall have small speed up
     forM_ (zip5 spec_retrieve spec_retrieve_scan (cudaStreams ep) spec_num_mpep_scan spec_num_mpep) $ 
-      \(n, ret_start, strm, score_start, num_mpep) -> do
+      \(n, ret_start, strm, score_start, num_mpep) -> 
+      if num_mpep == 0 then return () else do
         let d_score = d_scores `CUDA.advanceDevPtr` score_start
             h_score = h_scores `CUDA.advanceHostPtr` ret_start
             d_idx   = d_mpep_idx `CUDA.advanceDevPtr` score_start
