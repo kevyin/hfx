@@ -1,2 +1,0 @@
-C->Haskell Interface Version C->Haskell Compiler, version 0.16.3 Crystal Seed, 24 Jan 2009
-([((True,"cudaFuncAttributes"),("Ptr (FunAttributes)","Ptr (FunAttributes)"))],[("CudaFuncAttributes",Pointer {ptrTypeHO = ForeignPtr, isNewtypeHO = False})])

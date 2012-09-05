@@ -1,2 +1,0 @@
-C->Haskell Interface Version C->Haskell Compiler, version 0.16.3 Crystal Seed, 24 Jan 2009
-([((True,"cudaChannelFormatDesc"),("Ptr (FormatDesc)","Ptr (FormatDesc)")),((True,"textureReference"),("TextureReference","TextureReference"))],[("CudaChannelFormatDesc",Pointer {ptrTypeHO = ForeignPtr, isNewtypeHO = False}),("TextureReference",Pointer {ptrTypeHO = Ptr, isNewtypeHO = False})])
